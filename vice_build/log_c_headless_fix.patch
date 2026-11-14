@@ -1,0 +1,12 @@
+--- a/src/log.c	2025-12-25 05:51:33.000000000 +1100
++++ b/src/log.c	2026-11-14 18:30:32.837084895 +1100
+@@ -760,6 +760,9 @@
+         /* FIXME: we should force colors off here, if the standard logger goes
+                   into a file (because stdout was redirected) */
+         if (archdep_default_logger_is_terminal() == 0) {
++            /* fix: the no-colour copies only exist when logging to a file or colours are off */
++            if (nocolorpre == NULL) { nocolorpre = logskipcolors(pretxt); }
++            if (nocolortxt == NULL) { nocolortxt = logskipcolors(logtxt); }
+             terminalpre = nocolorpre;
+             terminaltxt = nocolortxt;
+         }

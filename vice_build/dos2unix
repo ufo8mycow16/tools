@@ -1,0 +1,4 @@
+#!/bin/sh
+# minimal dos2unix stand-in: strip CR, file args in place or stdin->stdout
+if [ $# -eq 0 ]; then tr -d "\r"; exit 0; fi
+for f in "$@"; do case "$f" in -*) continue;; esac; tr -d "\r" < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
