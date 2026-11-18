@@ -22,6 +22,7 @@ Glen (athrak) owns it; Claude maintains it. Keep this index up to date when addi
 | `skp2glb/` | Backup converter. Our own SketchUp (.skp, 2021+) -> .glb converter (first written for Klingon Challenge, Nov 2026). Textures, components, smoothing kept. | `python3 skp2glb.py in.skp out.glb` |
 | `monitor_remaster/` | Turns a converted SketchUp CRT monitor into a game-ready prop (Halcyon 1084, Late Night BBS): real plastic/grime materials, own badge, CRT screen with 0..1 UVs, bakes to one texture set. | `blender -b --python build_monitor.py -- in.glb outdir` then `bake_monitor.py -- outdir 2048`; `preview.py -- out.png file.glb\|.blend` (VIEW=34/front/back/badge) |
 | `c64/` | Commodore 64 kit: `d64.py` (list + extract a .d64), `cpu6502.py` + `unpack.py` (run a packer in a tiny 6502 to get the unpacked memory), `dis6502.py` (disassembler), `vmon.py` (drive a running VICE: memory, screen grab, joystick, keys, snapshots), `c64gfx.py` (draw chars/sprites in C64 colours). | see each file's top |
+| `wow_converter/` | WoW (Glen's install) -> .blend/.glb with an HD smoothing pass that keeps the shape. Reads CASC via a tiny fetcher on his PC. | see `wow_converter/README.md` |
 | `vice_build/` | Build VICE headless here with no flex/dos2unix/xa installed + our log.c start-up crash fix. | `sh build_vice.sh vice.tar.gz xa.tar.gz` |
 
 ## VICE notes (learned the hard way)
