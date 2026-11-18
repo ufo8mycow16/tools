@@ -8,6 +8,11 @@ Glen (athrak) owns it; Claude maintains it. Keep this index up to date when addi
   `git clone --depth 1 --branch tools-blender --single-branch https://github.com/ufo8mycow16/vulcan-fury /tmp/bl`,
   `cat /tmp/bl/*.part* > /tmp/blender.tar.xz`, `tar -xf` into `/home/claude/blender` (`--strip-components=1`);
   run headless: `blender -b --python script.py -- args`.
+- **WoW Model Viewer 1.1 (full source, Windows app)**: orphan branch `tools-wowmodelviewer` of this repo, 90 MB parts.
+  Views/exports WoW models, textures, buildings from Glen's install (OBJ, PNG, BLP). Glen calls it an important tool.
+  `git clone --depth 1 --branch tools-wowmodelviewer --single-branch https://github.com/ufo8mycow16/tools /tmp/wmv`,
+  `cat /tmp/wmv/*.part* > /tmp/wmv.tar.gz`, `sha256sum -c` against `SHA256SUMS` (named wowmodelviewer-1.1.tar.gz), `tar -xzf`.
+  Includes a Blender FBX import addon (`blender_addon/`) and CASC listfile (`ThirdParty/casclib/listfile/`).
 - **VICE / xa source tarballs**: Glen supplies them (vice-3.10.tar.gz, xa-2.4.1.tar.gz); build with `vice_build/build_vice.sh`.
 
 ## Index
