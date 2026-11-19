@@ -1,0 +1,16 @@
+## Interface: 16001
+## Title: |cffffd100Glen's|r |cff5b86e5Auctions|r
+## Notes: Auctioneer, rebuilt for Forever's auction house - full scans, market prices in tooltips, and the classic Appraiser for posting.
+## Author: Claude for Glen
+## Version: 0.1
+## SavedVariables: GlensAuctionsDB
+## SavedVariablesPerCharacter: GlensAuctionsBackup
+## IconTexture: Interface\AddOns\GlensAuctions\Textures\AucAdvIcon
+## AddonCompartmentFunc: GlensAuctions_OnCompartmentClick
+Core.lua
+Stats.lua
+Scan.lua
+Tooltip.lua
+Frame.lua
+Appraiser.lua
+Settings.lua
