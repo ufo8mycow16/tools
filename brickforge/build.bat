@@ -26,7 +26,7 @@ tasklist /fi "imagename eq BrickForge.exe" 2>nul | find /i "BrickForge.exe" >nul
 )
 
 echo  [1/3] Getting the build tools (numpy, scipy, pyinstaller, Windows repair)...
-%PY% -m pip install --quiet --upgrade numpy scipy pyinstaller || goto :fail
+%PY% -m pip install --quiet --upgrade numpy scipy pillow pyinstaller || goto :fail
 %PY% -m pip install --quiet --upgrade winrt-runtime winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Graphics.Printing3D winrt-Windows.Storage.Streams || echo  (Windows repair add-on didn't install - BrickForge will still work without it)
 
 echo  [2/3] Packing the LDraw parts library...
@@ -45,7 +45,7 @@ if defined CAT (
 
 echo  [3/3] Making BrickForge.exe (takes a minute or two)...
 %PY% -m PyInstaller --noconfirm --clean --onefile --windowed --name BrickForge ^
-    --add-data "ldraw_lib.zip;." %SETSDATA% --hidden-import ldraw_seal --hidden-import winrepair --hidden-import sets_core ^
+    --add-data "ldraw_lib.zip;." %SETSDATA% --hidden-import ldraw_seal --hidden-import winrepair --hidden-import sets_core --hidden-import PIL.ImageTk ^
     --collect-submodules winrt --hidden-import scipy.spatial ^
     brickforge.py || goto :fail
 

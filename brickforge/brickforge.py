@@ -12,7 +12,7 @@ import ldraw_core as core
 import sets_core
 
 APP = "BrickForge"
-VERSION = "1.3"
+VERSION = "1.4"
 ALL = "All categories"
 
 
@@ -105,12 +105,19 @@ class Preview(ttk.Frame):
     def reset_view(self):
         self.yaw, self.pitch, self.zoom = math.radians(-35), math.radians(28), 1.0
 
+    def show_picture(self, pil_image):
+        self.verts = None
+        self.picture = pil_image
+        self._draw(full=True)
+
     def show_message(self, text):
+        self.picture = None
         self.verts = None
         self.message = text
         self._draw(full=True)
 
     def set_mesh(self, verts, faces, rgb=None):
+        self.picture = None
         self.colour = np.array([int(rgb[i:i + 2], 16) for i in (0, 2, 4)], float) if rgb else self.BASE
         v = verts - (verts.min(axis=0) + verts.max(axis=0)) / 2
         self.verts, self.faces = v, faces
@@ -160,6 +167,13 @@ class Preview(ttk.Frame):
         c = self.canvas
         w, h = max(c.winfo_width(), 50), max(c.winfo_height(), 50)
         c.delete("all")
+        if self.verts is None and getattr(self, "picture", None) is not None:
+            im = self.picture.copy()
+            im.thumbnail((w - 10, h - 10))
+            from PIL import ImageTk
+            self._photo = ImageTk.PhotoImage(im)
+            c.create_image(w / 2, h / 2, image=self._photo)
+            return
         if self.verts is None:
             c.create_text(w / 2, h / 2, text=self.message, fill="#888", font=("Segoe UI", 11))
             return
@@ -492,6 +506,30 @@ class App:
             printable += r["qty"] if r["ld"] else 0
         self.set_title.configure(text=f"{info[0]}  {info[1]}  ({info[2]})  -  {total} pieces, "
                                       f"{printable} printable")
+        self._show_set_picture(info)
+
+    def _show_set_picture(self, info):
+        self.preview_req += 1
+        req = self.preview_req
+        self.pv_title.configure(text=f"{info[0]}  -  {info[1]}  ({info[2]})")
+        self.pv_info.configure(text="Set picture from Rebrickable  ·  click a piece below to see it in 3D")
+        url = self.sdb.picture_url(info[0])
+        if not url:
+            self.preview.show_message("No picture for this set")
+            return
+        self.preview.show_message("Fetching picture...")
+        cache = os.path.join(os.path.dirname(settings_path()), "set pictures")
+
+        def work():
+            try:
+                from PIL import Image
+                path = sets_core.fetch_picture(url, cache)
+                im = Image.open(path)
+                im.load()
+                self.q.put(("picture", (req, im.convert("RGB"))))
+            except Exception as e:
+                self.q.put(("preview_err", (req, info[0], "Couldn't get the picture (no internet?)")))
+        threading.Thread(target=work, daemon=True).start()
 
     def _on_inv_select(self):
         sel = self.inv_tree.selection()
@@ -567,6 +605,10 @@ class App:
                         os.startfile(val)
                     except Exception:
                         pass
+                elif kind == "picture":
+                    req, im = val
+                    if req == self.preview_req:
+                        self.preview.show_picture(im)
                 elif kind == "sets_ready":
                     self._fill_themes()
                     self.refresh_sets()
@@ -580,8 +622,9 @@ class App:
                 elif kind == "preview_err":
                     req, num, msg = val
                     if req == self.preview_req:
-                        self.pv_title.configure(text=num)
-                        self.pv_info.configure(text="")
+                        if not self.sdb or num not in (self._current_set() or ""):
+                            self.pv_title.configure(text=num)
+                            self.pv_info.configure(text="")
                         self.preview.show_message(msg)
         except queue.Empty:
             pass

@@ -104,7 +104,7 @@ def main(catalogue="all_downloads.zip", lib_zip="ldraw_lib.zip", out="sets.db"):
         os.remove(db_path)
     db = sqlite3.connect(db_path)
     db.executescript("""
-        CREATE TABLE sets(set_num TEXT PRIMARY KEY, name TEXT, year INT, theme TEXT, num_parts INT);
+        CREATE TABLE sets(set_num TEXT PRIMARY KEY, name TEXT, year INT, theme TEXT, num_parts INT, img_url TEXT);
         CREATE TABLE colors(id INT PRIMARY KEY, name TEXT, rgb TEXT, trans INT);
         CREATE TABLE parts(rb_part TEXT PRIMARY KEY, name TEXT, ld_part TEXT);
         CREATE TABLE set_parts(set_num TEXT, rb_part TEXT, color_id INT, qty INT, spare INT, source TEXT);
@@ -112,8 +112,9 @@ def main(catalogue="all_downloads.zip", lib_zip="ldraw_lib.zip", out="sets.db"):
     sets = {}
     for r in read_csv(z, "sets.csv"):
         sets[r["set_num"]] = r
-    db.executemany("INSERT INTO sets VALUES (?,?,?,?,?)",
-                   [(s, r["name"], int(r["year"] or 0), theme_path(r["theme_id"]), int(r["num_parts"] or 0))
+    db.executemany("INSERT INTO sets VALUES (?,?,?,?,?,?)",
+                   [(s, r["name"], int(r["year"] or 0), theme_path(r["theme_id"]), int(r["num_parts"] or 0),
+                     r.get("img_url") or "")
                     for s, r in sets.items()])
     db.executemany("INSERT INTO colors VALUES (?,?,?,?)",
                    [(int(r["id"]), r["name"], r["rgb"], 1 if r["is_trans"] in ("True", "t", "1") else 0)

@@ -39,6 +39,13 @@ class SetsDB:
         return self.db.execute("SELECT set_num, name, year, theme, num_parts FROM sets WHERE set_num=?",
                                (set_num,)).fetchone()
 
+    def picture_url(self, set_num):
+        try:
+            r = self.db.execute("SELECT img_url FROM sets WHERE set_num=?", (set_num,)).fetchone()
+            return r[0] if r and r[0] else None
+        except sqlite3.OperationalError:       # catalogue built before pictures were added
+            return None
+
     def contents(self, set_num, spares=False, minifigs=True):
         """List of dicts, one per part+colour."""
         q = """SELECT sp.rb_part, p.ld_part, p.name, sp.color_id, c.name, c.rgb, c.trans,
@@ -56,6 +63,22 @@ class SetsDB:
             out.append(dict(rb=rb, ld=ld, name=name, color_id=cid, color=cname, rgb=rgb,
                             trans=bool(trans), qty=int(qty), source=src))
         return out
+
+
+def fetch_picture(url, cache_dir):
+    """Download a set picture once and keep it; returns the local file path or None."""
+    import urllib.request
+    os.makedirs(cache_dir, exist_ok=True)
+    name = re.sub(r"[^A-Za-z0-9._-]", "_", url.rsplit("/", 1)[-1]) or "picture.jpg"
+    path = os.path.join(cache_dir, name)
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        return path
+    req = urllib.request.Request(url, headers={"User-Agent": "BrickForge/1.4 (personal set viewer)"})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        data = r.read()
+    with open(path, "wb") as f:
+        f.write(data)
+    return path
 
 
 def instructions_url(set_num):
