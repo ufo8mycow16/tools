@@ -88,19 +88,36 @@ class Library:
         member = getattr(self, "_index_member", None)
         if member:
             for line in self._zip.read(member).decode("utf-8").splitlines():
-                if "\t" in line:
-                    n, d = line.split("\t", 1)
-                    idx.append((n, d))
+                f = line.split("\t")
+                if len(f) >= 3:
+                    idx.append((f[0], f[1], f[2]))
+                elif len(f) == 2:
+                    idx.append((f[0], "Other", f[1]))
         else:
             for key, (prio, _) in self.files.items():
                 if prio == 0 and "/" not in key:
-                    text = self.read(key) or ""
-                    first = text.split("\n", 1)[0].strip()
-                    desc = first[1:].strip() if first.startswith("0") else ""
-                    idx.append((key[:-4], desc))
+                    desc, cat = parse_header(self.read(key) or "")
+                    idx.append((key[:-4], cat, desc))
             idx.sort(key=lambda x: _natural(x[0]))
         self.index = idx
         return idx
+
+    def categories(self, plain_only=True):
+        from collections import Counter
+        c = Counter(cat for n, cat, d in self.load_index() if not plain_only or is_plain(cat, d))
+        return sorted(c.items(), key=lambda x: x[0].lower())
+
+    def browse(self, category=None, words="", plain_only=True, limit=5000):
+        """Parts in a category (None = all), filtered by search words, as (num, cat, desc)."""
+        words = words.strip()
+        if words:
+            pool = self.search(words, limit=100000)
+        else:
+            pool = sorted(self.load_index(),
+                          key=lambda x: (_natural(" ".join(x[2].lstrip("~=_|").lower().split())), _natural(x[0])))
+        out = [p for p in pool
+               if (category is None or p[1] == category) and (not plain_only or is_plain(p[1], p[2]))]
+        return out[:limit]
 
     def search(self, words, limit=500):
         phrase = " ".join(words.lower().split())
@@ -108,14 +125,14 @@ class Library:
         if not words:
             return []
         exact, rest = [], []
-        for num, desc in self.load_index():
+        for num, cat, desc in self.load_index():
             hay = " ".join((num + " " + desc).lower().split())
             toks = set(re.findall(r"[a-z0-9.]+", hay))
             # numbers must match a whole number (so "6" doesn't match "16"); words can match part
             if all((w in toks) if w.isdigit() else (w in hay) for w in words):
-                (exact if phrase in hay or num == phrase else rest).append((num, desc))
+                (exact if phrase in hay or num == phrase else rest).append((num, cat, desc))
         def rank(item):
-            num, desc = item
+            num, cat, desc = item
             d = " ".join(desc.lower().split())
             return (desc.startswith("~"), not d.startswith(phrase), len(d))
         out = sorted(exact, key=rank) + sorted(rest, key=rank)
@@ -137,6 +154,37 @@ class Library:
         sugg = [k[:-4] for k, (p, _) in self.files.items()
                 if p == 0 and "/" not in k and re.match(re.escape(n) + r"[a-z]?[0-9]*\.dat$", k)]
         return None, sorted(sugg, key=_natural)[:20]
+
+
+def parse_header(text):
+    """(description, category) from the top of a part file."""
+    lines = text.split("\n", 60)
+    first = lines[0].strip() if lines else ""
+    desc = first[1:].strip() if first.startswith("0") else ""
+    cat = None
+    for ln in lines[1:60]:
+        t = ln.strip()
+        if t.startswith("0 !CATEGORY"):
+            cat = t[len("0 !CATEGORY"):].strip()
+            break
+    if not cat:
+        word = desc.lstrip("~_=|").split(" ", 1)[0] if desc else ""
+        cat = word or "Other"
+    if desc.startswith("~Moved"):
+        cat = "Moved"
+    return desc, cat
+
+
+HIDE_CATS = {"Sticker", "Sticker Shortcut", "Obsolete", "Moved"}
+
+
+def is_plain(cat, desc):
+    """True for normal, unprinted, current parts."""
+    # ~ old/hidden, = alias of another number (same shape), _ colour-specific copy
+    if cat in HIDE_CATS or desc[:1] in ("~", "=", "_", "|"):
+        return False
+    d = desc.lower()
+    return not any(w in d for w in (" pattern", "sticker", "(obsolete)"))
 
 
 def _natural(s):
