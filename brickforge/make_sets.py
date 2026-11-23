@@ -107,6 +107,7 @@ def main(catalogue="all_downloads.zip", lib_zip="ldraw_lib.zip", out="sets.db"):
         CREATE TABLE sets(set_num TEXT PRIMARY KEY, name TEXT, year INT, theme TEXT, num_parts INT, img_url TEXT);
         CREATE TABLE colors(id INT PRIMARY KEY, name TEXT, rgb TEXT, trans INT);
         CREATE TABLE parts(rb_part TEXT PRIMARY KEY, name TEXT, ld_part TEXT);
+        CREATE TABLE ld_colors(ld_id INT PRIMARY KEY, color_id INT);
         CREATE TABLE set_parts(set_num TEXT, rb_part TEXT, color_id INT, qty INT, spare INT, source TEXT);
     """)
     sets = {}
@@ -120,6 +121,11 @@ def main(catalogue="all_downloads.zip", lib_zip="ldraw_lib.zip", out="sets.db"):
                    [(int(r["id"]), r["name"], r["rgb"], 1 if r["is_trans"] in ("True", "t", "1") else 0)
                     for r in read_csv(z, "colors.csv")])
     part_names = {r["part_num"]: r["name"] for r in read_csv(z, "parts.csv")}
+    ldc = {}
+    for r in read_csv(z, "color_mappings.csv"):
+        if r["ext_system"] == "LD" and r["ext_id"].lstrip("-").isdigit():
+            ldc.setdefault(int(r["ext_id"]), int(r["id"]))
+    db.executemany("INSERT INTO ld_colors VALUES (?,?)", list(ldc.items()))
 
     # ---------- inventories (newest version of each set / minifig) ----------
     inv_of = {}

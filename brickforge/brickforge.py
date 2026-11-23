@@ -12,7 +12,7 @@ import ldraw_core as core
 import sets_core
 
 APP = "BrickForge"
-VERSION = "1.4"
+VERSION = "1.5"
 ALL = "All categories"
 
 
@@ -494,8 +494,10 @@ class App:
         total = printable = 0
         for k, r in enumerate(rows):
             note = sets_core.unprintable_reason(r)
-            if r["ld"] is None:
+            if r["ld"] is None or note.startswith("metal"):
                 note = "won't print - " + note
+            elif r.get("from_assembly"):
+                note = "part of: " + r["from_assembly"]
             elif r["source"] == "minifig":
                 note = note or "minifigure"
             iid = f"r{k}"
@@ -503,7 +505,7 @@ class App:
             self.inv_tree.insert("", "end", iid=iid, tags=(self._colour_tag(r["rgb"]),),
                                  values=(r["qty"], r["color"], r["name"], r["ld"] or "-", note))
             total += r["qty"]
-            printable += r["qty"] if r["ld"] else 0
+            printable += r["qty"] if r["ld"] and not sets_core.unprintable_reason(r).startswith("metal") else 0
         self.set_title.configure(text=f"{info[0]}  {info[1]}  ({info[2]})  -  {total} pieces, "
                                       f"{printable} printable")
         self._show_set_picture(info)
@@ -649,7 +651,7 @@ class App:
             here = os.path.dirname(os.path.abspath(sys.argv[0]))
             for cand in (resource("sets.db"), os.path.join(here, "sets.db")):
                 if os.path.exists(cand):
-                    self.sdb = sets_core.SetsDB(cand)
+                    self.sdb = sets_core.SetsDB(cand, self.lib)
                     n = self.sdb.db.execute("SELECT COUNT(*) FROM sets").fetchone()[0]
                     self.log(f"Sets catalogue ready: {n:,} sets (Sets tab).")
                     self.q.put(("sets_ready", None))

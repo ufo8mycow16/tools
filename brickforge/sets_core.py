@@ -7,8 +7,9 @@ import ldraw_core as core
 
 
 class SetsDB:
-    def __init__(self, path):
+    def __init__(self, path, lib=None):
         self.db = sqlite3.connect(path, check_same_thread=False)
+        self.lib = lib
 
     def themes(self):
         rows = self.db.execute("SELECT theme, COUNT(*) FROM sets GROUP BY theme").fetchall()
@@ -62,7 +63,49 @@ class SetsDB:
         for rb, ld, name, cid, cname, rgb, trans, qty, src in self.db.execute(q, (set_num,)):
             out.append(dict(rb=rb, ld=ld, name=name, color_id=cid, color=cname, rgb=rgb,
                             trans=bool(trans), qty=int(qty), source=src))
+        if self.lib is not None:
+            out = self._explode(out)
         return out
+
+    def _colour(self, ld_colour, fallback):
+        try:
+            r = self.db.execute("SELECT c.id, c.name, c.rgb, c.trans FROM ld_colors l JOIN colors c "
+                                "ON c.id = l.color_id WHERE l.ld_id = ?", (ld_colour,)).fetchone()
+        except sqlite3.OperationalError:
+            r = None
+        return r if r else fallback
+
+    def _explode(self, rows):
+        """Break 'complete assembly' parts into the separate pieces you'd actually print."""
+        lib = self.lib
+        result = []
+
+        def add(part, qty, colour, parent_name, src, depth):
+            comps = lib.components(part) if depth < 4 else None
+            if not comps:
+                desc = lib.description(part).lstrip("~=_|")
+                result.append(dict(rb=part, ld=part, name=desc, color_id=colour[0], color=colour[1],
+                                   rgb=colour[2], trans=bool(colour[3]), qty=qty, source=src,
+                                   from_assembly=parent_name))
+                return
+            for sub, ldc, n in comps:
+                col = colour if ldc == 16 else self._colour(ldc, colour)
+                add(sub, qty * n, col, parent_name, src, depth + 1)
+
+        for r in rows:
+            if r["ld"] and lib.components(r["ld"]):
+                add(r["ld"], r["qty"], (r["color_id"], r["color"], r["rgb"], r["trans"]), r["name"], r["source"], 0)
+            else:
+                result.append(r)
+        # merge identical piece+colour lines
+        merged = {}
+        for r in result:
+            k = (r["ld"] or r["rb"], r["color_id"])
+            if k in merged:
+                merged[k]["qty"] += r["qty"]
+            else:
+                merged[k] = dict(r)
+        return sorted(merged.values(), key=lambda r: (r["color"], r["name"]))
 
 
 def fetch_picture(url, cache_dir):
@@ -85,8 +128,13 @@ def instructions_url(set_num):
     return "https://www.lego.com/service/buildinginstructions/" + set_num.split("-")[0]
 
 
+METAL = ("steel", "metal", "magnet cylindrical", "magnet  ", "bulb", "lamp")
+
+
 def unprintable_reason(row):
     n = row["name"].lower()
+    if row["ld"] and any(w in n for w in METAL) and "holder" not in n:
+        return "metal / magnet - use the real thing"
     if row["ld"] is None:
         if "sticker" in n:
             return "sticker sheet"
@@ -107,7 +155,7 @@ def generate_set(lib, sdb, set_num, out_dir, stud=0.0, tube=0.0, spares=False, m
     groups = defaultdict(lambda: dict(qty=0, names=set(), rbs=set()))
     skipped = []
     for r in rows:
-        if r["ld"] is None:
+        if r["ld"] is None or unprintable_reason(r).startswith("metal"):
             skipped.append(r)
             continue
         g = groups[(lib.follow_moved(r["ld"]), r["color"])]
@@ -152,7 +200,7 @@ def generate_set(lib, sdb, set_num, out_dir, stud=0.0, tube=0.0, spares=False, m
         f.write(f"Building instructions: {instructions_url(set_num)}\n\n")
         f.write(f"PRINTED - {done} pieces, sorted into a folder per colour:\n")
         f.write("\n".join(lines) + "\n")
-        warn = [r for r in rows if r["ld"] and unprintable_reason(r)]
+        warn = [r for r in rows if r["ld"] and unprintable_reason(r) and not unprintable_reason(r).startswith("metal")]
         if warn:
             f.write("\nPRINTED, BUT CHECK THESE:\n")
             for r in warn:

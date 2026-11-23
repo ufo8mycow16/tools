@@ -138,6 +138,30 @@ class Library:
         out = sorted(exact, key=rank) + sorted(rest, key=rank)
         return out[:limit]
 
+    def components(self, number):
+        """If a part file is just an assembly of other parts (e.g. a train base 'complete' with
+        wheels and magnets fitted), return [(part, ldraw_colour, count)], else None.
+        Colour 16 means 'same colour as the assembly'."""
+        text = self.read(number + ".dat")
+        if not text:
+            return None
+        out = {}
+        for raw in text.splitlines():
+            tok = raw.split()
+            if not tok or tok[0] in ("0", "2", "5"):
+                continue
+            if tok[0] in ("3", "4"):
+                return None                    # has its own geometry - a real single part
+            if tok[0] == "1" and len(tok) >= 15:
+                sub = " ".join(tok[14:]).replace("\\", "/").lower()
+                if "/" in sub or not self.has_part(sub):
+                    return None                # uses subparts/primitives - a real single part
+                key = (sub[:-4], int(tok[1]) if tok[1].isdigit() else 16)
+                out[key] = out.get(key, 0) + 1
+        if len(out) < 1 or (len(out) == 1 and sum(out.values()) == 1):
+            return None
+        return [(p, c, n) for (p, c), n in out.items()]
+
     def follow_moved(self, number):
         """3023 ('~Moved to 3023b') -> 3023b."""
         for _ in range(5):
