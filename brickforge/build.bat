@@ -19,6 +19,12 @@ set PY=python
     exit /b 1
 )
 
+tasklist /fi "imagename eq BrickForge.exe" 2>nul | find /i "BrickForge.exe" >nul && (
+    echo  BrickForge is still open - close it first, otherwise the new version
+    echo  can't replace the old one. Then press a key to carry on.
+    pause
+)
+
 echo  [1/3] Getting the build tools (numpy, pyinstaller)...
 %PY% -m pip install --quiet --upgrade numpy pyinstaller || goto :fail
 
@@ -29,7 +35,12 @@ echo  [3/3] Making BrickForge.exe (takes a minute or two)...
 %PY% -m PyInstaller --noconfirm --clean --onefile --windowed --name BrickForge ^
     --add-data "ldraw_lib.zip;." brickforge.py || goto :fail
 
-copy /y dist\BrickForge.exe BrickForge.exe >nul
+copy /y dist\BrickForge.exe BrickForge.exe >nul || (
+    echo.
+    echo  Couldn't replace BrickForge.exe - is it still open? Close it and run build.bat again.
+    pause
+    exit /b 1
+)
 rmdir /s /q build >nul 2>&1
 rmdir /s /q dist >nul 2>&1
 del /q BrickForge.spec >nul 2>&1
