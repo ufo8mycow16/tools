@@ -11,7 +11,7 @@ import numpy as np
 import ldraw_core as core
 
 APP = "BrickForge"
-VERSION = "1.1"
+VERSION = "1.2"
 ALL = "All categories"
 
 
@@ -396,6 +396,12 @@ class App:
             self.lib = core.Library(path)
             n = len(self.lib.load_index())
             self.log(f"Library ready: {n:,} parts. Pick a category or search, click a part to preview it.")
+            try:
+                import winrepair
+                self.log("Windows 3D-print repair: " + ("available" if winrepair.AVAILABLE
+                         else "not available (" + winrepair.why_unavailable() + ")"))
+            except Exception:
+                pass
             self.q.put(("ready", None))
         except Exception as e:
             self.log(f"Couldn't open the library: {e}")
@@ -545,7 +551,7 @@ class App:
                     self.log(msg)
                     continue
                 w, d, h = r["size"]
-                line = f'{r["number"]}: {r["desc"].lstrip("~=_|")}  ->  {w:.1f} x {d:.1f} x {h:.1f} mm'
+                line = f'{r["number"]}: {r["desc"].lstrip("~=_|")}  ->  {w:.1f} x {d:.1f} x {h:.1f} mm  [{r["sealed"]}]'
                 if r["desc"].startswith("~Moved to"):
                     line += "  (old number - library points it at the new one)"
                 self.log(line)

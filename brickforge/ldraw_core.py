@@ -374,17 +374,51 @@ def safe_filename(s):
     return s[:120] or "part"
 
 
-def generate(lib, number, out_dir, stud_adjust=0.0, tube_adjust=0.0):
+SEAL_MAX_FACES = 15000   # bigger parts skip our sealer (too slow) and go to Windows repair
+
+
+def make_printable(verts, faces, open_edges):
+    """Try to turn the part into one sealed solid.
+    1. our own sealer (exact, great for bricks/plates/tiles)
+    2. Windows' built-in 3D-print repair (what Bambu Studio's "Fix model" uses)
+    Returns (verts, faces, open_edges, how)."""
+    if open_edges == 0:
+        return verts, faces, 0, "already sealed"
+    if len(faces) <= SEAL_MAX_FACES:
+        try:
+            import ldraw_seal
+            V2, F2, o2 = ldraw_seal.seal(verts, faces)
+            if o2 == 0 and len(F2):
+                return V2, F2, 0, "sealed"
+        except Exception:
+            pass
+    try:
+        import winrepair
+        r = winrepair.repair(verts, faces)
+        if r is not None and len(r[1]):
+            V2, F2 = r
+            _, _, o2 = clean_mesh(V2[F2])
+            return V2, F2, o2, "sealed (Windows repair)" if o2 == 0 else "Windows repair (partly)"
+    except Exception:
+        pass
+    return verts, faces, open_edges, "not sealed - Bambu Studio will offer to fix it"
+
+
+def generate(lib, number, out_dir, stud_adjust=0.0, tube_adjust=0.0, seal=True):
     """Make one STL. Returns dict with info for the log."""
     resolved, sugg = lib.resolve(number)
     if resolved is None:
         return {"ok": False, "number": number, "suggest": sugg}
     desc = lib.description(resolved)
     verts, faces, open_edges, missing = part_to_mesh(lib, resolved, stud_adjust, tube_adjust)
+    how = ""
+    if seal:
+        verts, faces, open_edges, how = make_printable(verts, faces, open_edges)
     size = verts.max(axis=0) - verts.min(axis=0)
     name = safe_filename(f"{resolved} - {desc.lstrip('~=_|')}") + ".stl"
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, name)
     write_stl(path, verts, faces, f"{resolved} {desc}")
     return {"ok": True, "number": resolved, "desc": desc, "path": path,
-            "faces": len(faces), "size": size, "open_edges": open_edges, "missing": missing}
+            "faces": len(faces), "size": size, "open_edges": open_edges, "missing": missing,
+            "sealed": how}

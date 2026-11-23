@@ -25,9 +25,12 @@ USING IT
 - Fit: Stud size / Tube size in mm. 0 is standard. If bricks are too tight,
   try -0.05 or -0.1; too loose, +0.05 or +0.1.
 - Parts are placed flat on the bed, studs up, centred. Plain studs, no logos.
-- Bambu Studio may say the model has errors and offer to fix them - say yes.
-  The library's shapes are made for drawing, not printing, so they often have
-  tiny seams the slicer tidies up automatically.
+- Sealing: the library's shapes are made for drawing, not printing (studs just
+  sit on top of plates, seams don't quite meet). BrickForge seals each part
+  into one solid before saving: first its own sealer (exact - bricks, plates,
+  tiles), then for anything trickier the 3D-print repair built into Windows
+  (the same one Bambu Studio's "Fix model" uses). The progress log says which.
+  If it says "not sealed", Bambu Studio will offer to fix it - say yes.
 - Printed parts (stickers, torso prints etc.) come out as the plain shape.
 
 UPDATING THE LIBRARY
