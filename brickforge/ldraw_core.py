@@ -138,6 +138,16 @@ class Library:
         out = sorted(exact, key=rank) + sorted(rest, key=rank)
         return out[:limit]
 
+    def follow_moved(self, number):
+        """3023 ('~Moved to 3023b') -> 3023b."""
+        for _ in range(5):
+            d = self.description(number)
+            m = re.match(r"~Moved to (\S+)", d)
+            if not m or not self.has_part(m.group(1).lower() + ".dat"):
+                return number
+            number = m.group(1).lower()
+        return number
+
     def description(self, number):
         text = self.read(number + ".dat") or ""
         first = text.split("\n", 1)[0].strip()

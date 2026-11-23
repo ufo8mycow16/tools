@@ -9,9 +9,10 @@ from tkinter import ttk, filedialog, messagebox
 
 import numpy as np
 import ldraw_core as core
+import sets_core
 
 APP = "BrickForge"
-VERSION = "1.2"
+VERSION = "1.3"
 ALL = "All categories"
 
 
@@ -109,7 +110,8 @@ class Preview(ttk.Frame):
         self.message = text
         self._draw(full=True)
 
-    def set_mesh(self, verts, faces):
+    def set_mesh(self, verts, faces, rgb=None):
+        self.colour = np.array([int(rgb[i:i + 2], 16) for i in (0, 2, 4)], float) if rgb else self.BASE
         v = verts - (verts.min(axis=0) + verts.max(axis=0)) / 2
         self.verts, self.faces = v, faces
         self.radius = float(np.max(np.linalg.norm(v, axis=1))) or 1.0
@@ -177,7 +179,9 @@ class Preview(ttk.Frame):
         light = np.array([-0.4, -0.8, 0.6])
         light /= np.linalg.norm(light)
         sh = 0.35 + 0.65 * np.clip(n @ light, 0, 1)
-        col = np.clip(self.BASE[None] * sh[:, None] + 30 * sh[:, None] ** 4, 0, 255).astype(np.uint8)
+        base = getattr(self, "colour", self.BASE)
+        lift = 40 if base.max() < 60 else 0          # keep black parts readable
+        col = np.clip((base[None] + lift) * sh[:, None] + 30 * sh[:, None] ** 4, 0, 255).astype(np.uint8)
         xs = np.concatenate([px, px + 1, px, px + 1])
         ys = np.concatenate([py, py, py + 1, py + 1])
         ds = np.tile(Q[:, 1], 4)
@@ -208,6 +212,7 @@ class App:
     def __init__(self, root):
         self.root = root
         self.lib = None
+        self.sdb = None
         self.q = queue.Queue()
         self.busy = False
         self.preview_req = 0
@@ -238,8 +243,13 @@ class App:
         main.rowconfigure(0, weight=1)
 
         # ---- left: browser
-        left = ttk.LabelFrame(main, text="Parts")
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        self.nb = ttk.Notebook(main)
+        self.nb.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
+        left = ttk.Frame(self.nb, padding=2)
+        self.nb.add(left, text="  Parts  ")
+        sets_tab = ttk.Frame(self.nb, padding=2)
+        self.nb.add(sets_tab, text="  Sets  ")
+        self._build_sets_tab(sets_tab)
         left.columnconfigure(1, weight=1)
         left.rowconfigure(3, weight=1)
 
@@ -352,6 +362,187 @@ class App:
                        "LEGO is a trademark of the LEGO Group, which does not sponsor this program.").grid(
             row=3, column=0, columnspan=2, sticky="w", pady=(4, 0))
 
+    # ---------- sets tab ----------
+    def _build_sets_tab(self, tab):
+        tab.columnconfigure(1, weight=1)
+        tab.rowconfigure(3, weight=1)
+        tab.rowconfigure(5, weight=2)
+        ttk.Label(tab, text="Theme:").grid(row=0, column=0, sticky="w", padx=6, pady=(6, 3))
+        self.theme_var = tk.StringVar(value="All themes")
+        self.theme_box = ttk.Combobox(tab, textvariable=self.theme_var, state="readonly", height=30)
+        self.theme_box.grid(row=0, column=1, columnspan=2, sticky="ew", padx=6, pady=(6, 3))
+        self.theme_box.bind("<<ComboboxSelected>>", lambda e: self.refresh_sets())
+        ttk.Label(tab, text="Search:").grid(row=1, column=0, sticky="w", padx=6, pady=3)
+        self.set_search = tk.StringVar()
+        e = ttk.Entry(tab, textvariable=self.set_search, font=("Segoe UI", 11))
+        e.grid(row=1, column=1, sticky="ew", padx=6, pady=3)
+        e.bind("<KeyRelease>", lambda ev: self._sets_soon())
+        ttk.Label(tab, foreground="#666", text="set number or name, e.g. 171 or castle").grid(
+            row=1, column=2, sticky="w", padx=6)
+        self.sets_count = ttk.Label(tab, foreground="#666", text="")
+        self.sets_count.grid(row=2, column=0, columnspan=3, sticky="w", padx=6)
+
+        f1 = ttk.Frame(tab)
+        f1.grid(row=3, column=0, columnspan=3, sticky="nsew", padx=6)
+        f1.rowconfigure(0, weight=1)
+        f1.columnconfigure(0, weight=1)
+        self.sets_tree = ttk.Treeview(f1, columns=("num", "name", "year", "pcs", "theme"), show="headings",
+                                      selectmode="browse", height=8)
+        for col, txt, wd, st in (("num", "Set", 80, False), ("name", "Name", 230, True), ("year", "Year", 50, False),
+                                 ("pcs", "Pieces", 60, False), ("theme", "Theme", 170, False)):
+            self.sets_tree.heading(col, text=txt)
+            self.sets_tree.column(col, width=wd, stretch=st)
+        self.sets_tree.grid(row=0, column=0, sticky="nsew")
+        sb = ttk.Scrollbar(f1, orient="vertical", command=self.sets_tree.yview)
+        sb.grid(row=0, column=1, sticky="ns")
+        self.sets_tree.configure(yscrollcommand=sb.set)
+        self.sets_tree.bind("<<TreeviewSelect>>", lambda ev: self._on_set_select())
+
+        self.set_title = ttk.Label(tab, text="Pick a set to see what's in the box", font=("Segoe UI", 10, "bold"))
+        self.set_title.grid(row=4, column=0, columnspan=3, sticky="w", padx=6, pady=(8, 2))
+        f2 = ttk.Frame(tab)
+        f2.grid(row=5, column=0, columnspan=3, sticky="nsew", padx=6)
+        f2.rowconfigure(0, weight=1)
+        f2.columnconfigure(0, weight=1)
+        self.inv_tree = ttk.Treeview(f2, columns=("qty", "colour", "desc", "part", "note"), show="headings",
+                                     selectmode="browse")
+        for col, txt, wd, st in (("qty", "Qty", 45, False), ("colour", "Colour", 120, False),
+                                 ("desc", "Piece", 280, True), ("part", "Shape", 80, False), ("note", "", 150, False)):
+            self.inv_tree.heading(col, text=txt)
+            self.inv_tree.column(col, width=wd, stretch=st)
+        self.inv_tree.grid(row=0, column=0, sticky="nsew")
+        sb2 = ttk.Scrollbar(f2, orient="vertical", command=self.inv_tree.yview)
+        sb2.grid(row=0, column=1, sticky="ns")
+        self.inv_tree.configure(yscrollcommand=sb2.set)
+        self.inv_tree.bind("<<TreeviewSelect>>", lambda ev: self._on_inv_select())
+
+        bot = ttk.Frame(tab)
+        bot.grid(row=6, column=0, columnspan=3, sticky="ew", padx=6, pady=6)
+        self.spares_var = tk.BooleanVar(value=False)
+        self.figs_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(bot, text="Minifigures", variable=self.figs_var,
+                        command=self._on_set_select).pack(side="left")
+        ttk.Checkbutton(bot, text="Spare pieces", variable=self.spares_var,
+                        command=self._on_set_select).pack(side="left", padx=8)
+        self.set_btn = ttk.Button(bot, text="Make whole set", command=self.make_set)
+        self.set_btn.pack(side="right")
+        ttk.Button(bot, text="Building instructions", command=self.open_instructions).pack(side="right", padx=6)
+        self._inv_rows = {}
+        self._sets_job = None
+        self._colour_tags = set()
+
+    def _fill_themes(self):
+        if not self.sdb:
+            return
+        th = self.sdb.themes()
+        self._theme_names = {f"{t}  ({n:,})": t for t, n in th}
+        total = sum(n for _, n in th)
+        self.theme_box.configure(values=[f"All themes  ({total:,})"] + list(self._theme_names))
+        self.theme_var.set(f"All themes  ({total:,})")
+
+    def _sets_soon(self):
+        if self._sets_job:
+            self.root.after_cancel(self._sets_job)
+        self._sets_job = self.root.after(250, self.refresh_sets)
+
+    def refresh_sets(self):
+        self._sets_job = None
+        if not self.sdb:
+            return
+        theme = getattr(self, "_theme_names", {}).get(self.theme_var.get())
+        rows = self.sdb.search(self.set_search.get(), theme)
+        self.sets_tree.delete(*self.sets_tree.get_children())
+        for num, name, year, theme_path, pcs in rows:
+            self.sets_tree.insert("", "end", iid=num, values=(num, name, year, pcs, theme_path))
+        self.sets_count.configure(text=f"{len(rows):,} sets" + ("  (first 3,000 shown)" if len(rows) >= 3000 else ""))
+
+    def _current_set(self):
+        sel = self.sets_tree.selection()
+        return sel[0] if sel else None
+
+    def _colour_tag(self, rgb):
+        tag = "c" + rgb
+        if tag not in self._colour_tags:
+            r, g, b = (int(rgb[i:i + 2], 16) for i in (0, 2, 4))
+            fg = "#000000" if (0.3 * r + 0.59 * g + 0.11 * b) > 140 else "#ffffff"
+            self.inv_tree.tag_configure(tag, background="#" + rgb, foreground=fg)
+            self._colour_tags.add(tag)
+        return tag
+
+    def _on_set_select(self):
+        s = self._current_set()
+        if not s or not self.sdb:
+            return
+        info = self.sdb.info(s)
+        rows = self.sdb.contents(s, self.spares_var.get(), self.figs_var.get())
+        self.inv_tree.delete(*self.inv_tree.get_children())
+        self._inv_rows = {}
+        total = printable = 0
+        for k, r in enumerate(rows):
+            note = sets_core.unprintable_reason(r)
+            if r["ld"] is None:
+                note = "won't print - " + note
+            elif r["source"] == "minifig":
+                note = note or "minifigure"
+            iid = f"r{k}"
+            self._inv_rows[iid] = r
+            self.inv_tree.insert("", "end", iid=iid, tags=(self._colour_tag(r["rgb"]),),
+                                 values=(r["qty"], r["color"], r["name"], r["ld"] or "-", note))
+            total += r["qty"]
+            printable += r["qty"] if r["ld"] else 0
+        self.set_title.configure(text=f"{info[0]}  {info[1]}  ({info[2]})  -  {total} pieces, "
+                                      f"{printable} printable")
+
+    def _on_inv_select(self):
+        sel = self.inv_tree.selection()
+        if not sel or not self.lib:
+            return
+        r = self._inv_rows.get(sel[0])
+        if not r:
+            return
+        if r["ld"] is None:
+            self.pv_title.configure(text=r["name"])
+            self.pv_info.configure(text="")
+            self.preview.show_message("No 3D shape for this one")
+            return
+        self.request_preview(r["ld"], r["name"], r["rgb"], r["color"])
+
+    def open_instructions(self):
+        s = self._current_set()
+        if s:
+            import webbrowser
+            webbrowser.open(sets_core.instructions_url(s))
+
+    def make_set(self):
+        s = self._current_set()
+        if not s:
+            messagebox.showinfo(APP, "Pick a set first.")
+            return
+        if self.busy or not self.lib:
+            return
+        info = self.sdb.info(s)
+        if not messagebox.askyesno(APP, f"Make every printable piece of {info[0]} {info[1]}?\n\n"
+                                        f"The files go into a folder named after the set, "
+                                        f"with a folder per colour."):
+            return
+        self.busy = True
+        self.gen_btn.configure(state="disabled")
+        self.set_btn.configure(state="disabled")
+        self._save_settings()
+        args = (s, self.out_var.get(), self._num(self.stud_var), self._num(self.tube_var),
+                self.spares_var.get(), self.figs_var.get())
+        threading.Thread(target=self._run_set, args=args, daemon=True).start()
+
+    def _run_set(self, s, out, stud, tube, spares, figs):
+        try:
+            folder = sets_core.generate_set(self.lib, self.sdb, s, out, stud, tube, spares, figs,
+                                            log=self.log, progress=lambda i, n: self.q.put(("progress", (i, n))))
+            self.q.put(("open", folder))
+        except Exception as e:
+            self.log(f"Set failed - {e}")
+            traceback.print_exc()
+        self.q.put(("done", None))
+
     # ---------- plumbing ----------
     def log(self, msg):
         self.q.put(("log", msg))
@@ -370,13 +561,22 @@ class App:
                 elif kind == "done":
                     self.busy = False
                     self.gen_btn.configure(state="normal")
+                    self.set_btn.configure(state="normal")
+                elif kind == "open":
+                    try:
+                        os.startfile(val)
+                    except Exception:
+                        pass
+                elif kind == "sets_ready":
+                    self._fill_themes()
+                    self.refresh_sets()
                 elif kind == "ready":
                     self._fill_categories()
                     self.refresh_list()
                 elif kind == "preview":
-                    req, num, desc, verts, faces = val
+                    req, num, desc, verts, faces, rgb, cname = val
                     if req == self.preview_req:
-                        self._show_preview(num, desc, verts, faces)
+                        self._show_preview(num, desc, verts, faces, rgb, cname)
                 elif kind == "preview_err":
                     req, num, msg = val
                     if req == self.preview_req:
@@ -403,6 +603,16 @@ class App:
             except Exception:
                 pass
             self.q.put(("ready", None))
+            here = os.path.dirname(os.path.abspath(sys.argv[0]))
+            for cand in (resource("sets.db"), os.path.join(here, "sets.db")):
+                if os.path.exists(cand):
+                    self.sdb = sets_core.SetsDB(cand)
+                    n = self.sdb.db.execute("SELECT COUNT(*) FROM sets").fetchone()[0]
+                    self.log(f"Sets catalogue ready: {n:,} sets (Sets tab).")
+                    self.q.put(("sets_ready", None))
+                    break
+            else:
+                self.log("No sets catalogue built in - put the Rebrickable zip next to build.bat and rebuild.")
         except Exception as e:
             self.log(f"Couldn't open the library: {e}")
 
@@ -475,35 +685,37 @@ class App:
         sel = self.tree.selection()
         if not sel or not self.lib:
             return
-        num = self.tree.item(sel[0], "values")[0]
-        desc = self.tree.item(sel[0], "values")[1]
+        vals = self.tree.item(sel[0], "values")
+        self.request_preview(vals[0], vals[1])
+
+    def request_preview(self, num, desc, rgb=None, colour_name=""):
         self.preview_req += 1
         req = self.preview_req
         if num in self.mesh_cache:
             v, f = self.mesh_cache[num]
-            self._show_preview(num, desc, v, f)
+            self._show_preview(num, desc, v, f, rgb, colour_name)
             return
         self.pv_title.configure(text=f"{num}  -  {desc}")
         self.pv_info.configure(text="")
         self.preview.show_message("Building preview...")
-        threading.Thread(target=self._build_preview, args=(req, num, desc), daemon=True).start()
+        threading.Thread(target=self._build_preview, args=(req, num, desc, rgb, colour_name), daemon=True).start()
 
-    def _build_preview(self, req, num, desc):
+    def _build_preview(self, req, num, desc, rgb=None, colour_name=""):
         try:
             v, f, _, _ = core.part_to_mesh(self.lib, num)
             self.mesh_cache[num] = (v, f)
             if len(self.mesh_cache) > 60:
                 self.mesh_cache.pop(next(iter(self.mesh_cache)))
-            self.q.put(("preview", (req, num, desc, v, f)))
+            self.q.put(("preview", (req, num, desc, v, f, rgb, colour_name)))
         except Exception as e:
             self.q.put(("preview_err", (req, num, f"Can't preview this one: {e}")))
 
-    def _show_preview(self, num, desc, verts, faces):
+    def _show_preview(self, num, desc, verts, faces, rgb=None, colour_name=""):
         size = verts.max(axis=0) - verts.min(axis=0)
-        self.pv_title.configure(text=f"{num}  -  {desc}")
+        self.pv_title.configure(text=f"{num}  -  {desc}" + (f"   ({colour_name})" if colour_name else ""))
         self.pv_info.configure(text=f"{size[0]:.1f} x {size[1]:.1f} x {size[2]:.1f} mm   ·   "
                                     f"{len(faces):,} triangles")
-        self.preview.set_mesh(verts, faces)
+        self.preview.set_mesh(verts, faces, rgb)
 
     # ---------- output ----------
     def browse_out(self):

@@ -32,9 +32,20 @@ echo  [1/3] Getting the build tools (numpy, scipy, pyinstaller, Windows repair).
 echo  [2/3] Packing the LDraw parts library...
 %PY% make_library.py complete.zip ldraw_lib.zip || goto :fail
 
+set SETSDATA=
+set CAT=
+for %%F in (*downloads*.zip rebrickable*.zip) do if not defined CAT set CAT=%%F
+if defined CAT (
+    echo  [2b] Building the sets catalogue from %CAT%...
+    %PY% make_sets.py "%CAT%" ldraw_lib.zip sets.db || goto :fail
+    set SETSDATA=--add-data "sets.db;."
+) else (
+    echo  [2b] No Rebrickable catalogue zip here - building without the Sets tab.
+)
+
 echo  [3/3] Making BrickForge.exe (takes a minute or two)...
 %PY% -m PyInstaller --noconfirm --clean --onefile --windowed --name BrickForge ^
-    --add-data "ldraw_lib.zip;." --hidden-import ldraw_seal --hidden-import winrepair ^
+    --add-data "ldraw_lib.zip;." %SETSDATA% --hidden-import ldraw_seal --hidden-import winrepair --hidden-import sets_core ^
     --collect-submodules winrt --hidden-import scipy.spatial ^
     brickforge.py || goto :fail
 
@@ -48,6 +59,7 @@ rmdir /s /q build >nul 2>&1
 rmdir /s /q dist >nul 2>&1
 del /q BrickForge.spec >nul 2>&1
 del /q ldraw_lib.zip >nul 2>&1
+del /q sets.db >nul 2>&1
 
 echo.
 echo  All done! BrickForge.exe is in this folder - it has the whole library inside,

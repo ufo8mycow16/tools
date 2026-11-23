@@ -10,6 +10,16 @@ MAKING THE PROGRAM (once)
 4. You get BrickForge.exe in that folder. The whole parts library is inside it,
    so you can copy the exe anywhere on its own and delete the rest if you like.
 
+SETS (optional)
+Put the Rebrickable catalogue zip (all_downloads.zip) in the same folder before
+running build.bat and BrickForge gets a Sets tab: every LEGO set, searchable by
+number, name or theme. Pick a set to see everything in the box (in its colours,
+click a piece to preview it), then "Make whole set" generates every printable
+piece into a folder named after the set, with a folder per colour and the count
+in each file name ("3004 - Brick 1 x 2 - print 8.stl"). A "Parts list.txt" in
+that folder lists the lot, plus anything it couldn't make (sticker sheets).
+"Building instructions" opens LEGO's instructions page for the set.
+
 USING IT
 - Browse the parts list on the left: pick a category (Brick, Plate, Tile,
   Slope, Technic...) and/or type in the search box to narrow it down
