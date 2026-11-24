@@ -19,3 +19,8 @@ Gotchas: item textures (type 2) aren't in the model - look them up per item. Old
 gets them wrong, blp.py does them. Commit of requests.txt sometimes didn't land when reusing the
 same staged path - use a fresh staged file name and force=true.
 TODO: skeleton + animations to glb, character assembly (geosets, skin compositing, attachments), hair.
+
+After WoW patches: encoding + root are stale. Read the active build key from `.build.info`, stage
+`Data/config/xx/yy/<buildkey>`, `casc.parse_config` -> fetch `encoding` (ekey 2nd value) first, decode,
+then plan root from its ckey - two fetch.bat rounds. Pick installed root variants by checking the idx.
+Finding file IDs: the WMV branch's `listfile-archive.zip` has `listfile.csv` (id;path); Atiesh = stave_2h_medivh_d_01.
