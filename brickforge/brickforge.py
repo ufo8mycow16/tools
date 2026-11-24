@@ -253,7 +253,54 @@ class App:
         root.protocol("WM_DELETE_WINDOW", self._close)
 
     # ---------- layout ----------
+    # ---------- minifig artwork (rendered from the LDraw library by art/minifig_art.py) ----------
+    ART = ("banner", "knight_ready", "knight_press", "lady_knight_wave", "knight_guard")
+
+    def _load_art(self):
+        self.art = {}
+        for n in self.ART:
+            try:
+                self.art[n] = tk.PhotoImage(file=resource(os.path.join("art", n + ".png")))
+            except Exception:
+                pass                                   # no pictures - the app works without them
+
+    def _art_canvas(self, parent, name):
+        img = self.art.get(name)
+        if img is None:
+            return None
+        try:
+            bg = ttk.Style().lookup("TFrame", "background") or "SystemButtonFace"
+        except Exception:
+            bg = "SystemButtonFace"
+        c = tk.Canvas(parent, width=img.width(), height=img.height(), highlightthickness=0, bd=0, bg=bg)
+        c.create_image(0, 0, image=img, anchor="nw", tags="img")
+        return c
+
+    def _press_knight(self):
+        """The knight by the Generate button presses it."""
+        c = getattr(self, "knight_cv", None)
+        if c is None or "knight_press" not in self.art:
+            return
+        c.itemconfigure("img", image=self.art["knight_press"])
+        self.root.after(450, lambda: c.itemconfigure("img", image=self.art["knight_ready"]))
+
     def _build(self):
+        self._load_art()
+        if self.art:
+            head = ttk.Frame(self.root, padding=(8, 6, 8, 0))
+            head.pack(fill="x")
+            b = self._art_canvas(head, "banner")
+            if b:
+                b.pack(side="left")
+            g = self._art_canvas(head, "knight_guard")
+            if g:
+                g.pack(side="right", padx=(0, 10))
+            words = ttk.Frame(head)
+            words.pack(side="left", fill="x", expand=True, padx=16)
+            ttk.Label(words, text="Any LEGO part or set, ready to print",
+                      font=("Segoe UI", 15, "bold")).pack(anchor="w", pady=(28, 2))
+            ttk.Label(words, text="Pick a part or a whole set, press Generate - the knights do the rest.",
+                      foreground="#555", font=("Segoe UI", 10)).pack(anchor="w")
         main = ttk.Frame(self.root, padding=8)
         main.pack(fill="both", expand=True)
         main.columnconfigure(0, weight=5)
@@ -341,6 +388,9 @@ class App:
             row=1, column=0, sticky="w", padx=6, pady=(0, 6))
         cf = ttk.Frame(mk)
         cf.grid(row=1, column=1, sticky="e", padx=6, pady=(0, 6))
+        self.knight_cv = self._art_canvas(cf, "knight_ready")
+        if self.knight_cv:
+            self.knight_cv.pack(side="left", padx=(0, 8))
         ttk.Label(cf, text="How many:").pack(side="left")
         self.copies_var = tk.IntVar(value=1)
         ttk.Spinbox(cf, from_=1, to=200, increment=1, textvariable=self.copies_var, width=5).pack(side="left", padx=(4, 10))
@@ -456,6 +506,9 @@ class App:
                         command=self._on_set_select).pack(side="left")
         ttk.Checkbutton(bot, text="Spare pieces", variable=self.spares_var,
                         command=self._on_set_select).pack(side="left", padx=8)
+        lady = self._art_canvas(bot, "lady_knight_wave")
+        if lady:
+            lady.pack(side="right", padx=(6, 0))
         self.set_btn = ttk.Button(bot, text="Make whole set", command=self.make_set)
         self.set_btn.pack(side="right")
         self.instr_btn = ttk.Button(bot, text="Building instructions \u25be", command=self.open_instructions)
@@ -585,6 +638,7 @@ class App:
             menu.grab_release()
 
     def make_set(self):
+        self._press_knight()
         s = self._current_set()
         if not s:
             messagebox.showinfo(APP, "Pick a set first.")
@@ -817,6 +871,7 @@ class App:
             messagebox.showinfo(APP, d)
 
     def generate(self):
+        self._press_knight()
         if self.busy:
             messagebox.showinfo(APP, "BrickForge is still busy with the last job - watch the progress bar "
                                      "and try again when it's finished.")
