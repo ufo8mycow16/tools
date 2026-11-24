@@ -12,7 +12,7 @@ import ldraw_core as core
 import sets_core
 
 APP = "BrickForge"
-VERSION = "1.9"
+VERSION = "2.0"
 ALL = "All categories"
 
 
@@ -448,7 +448,8 @@ class App:
                         command=self._on_set_select).pack(side="left", padx=8)
         self.set_btn = ttk.Button(bot, text="Make whole set", command=self.make_set)
         self.set_btn.pack(side="right")
-        ttk.Button(bot, text="Building instructions", command=self.open_instructions).pack(side="right", padx=6)
+        self.instr_btn = ttk.Button(bot, text="Building instructions \u25be", command=self.open_instructions)
+        self.instr_btn.pack(side="right", padx=6)
         self._inv_rows = {}
         self._sets_job = None
         self._colour_tags = set()
@@ -556,10 +557,22 @@ class App:
         self.request_preview(r["ld"], r["name"], r["rgb"], r["color"])
 
     def open_instructions(self):
+        """A little menu of places that have the instructions - LEGO.com only has newer
+        sets, so older ones list the scan sites first."""
         s = self._current_set()
-        if s:
-            import webbrowser
-            webbrowser.open(sets_core.instructions_url(s))
+        if not s:
+            messagebox.showinfo(APP, "Pick a set first.")
+            return
+        import webbrowser
+        info = self.sdb.info(s)
+        menu = tk.Menu(self.root, tearoff=0)
+        for label, url in sets_core.instructions_links(s, info[2], info[1]):
+            menu.add_command(label=label, command=lambda u=url: webbrowser.open(u))
+        b = self.instr_btn
+        try:
+            menu.tk_popup(b.winfo_rootx(), b.winfo_rooty() + b.winfo_height())
+        finally:
+            menu.grab_release()
 
     def make_set(self):
         s = self._current_set()

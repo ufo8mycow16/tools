@@ -124,8 +124,28 @@ def fetch_picture(url, cache_dir):
     return path
 
 
-def instructions_url(set_num):
-    return "https://www.lego.com/service/buildinginstructions/" + set_num.split("-")[0]
+LEGO_SITE_FROM = 2002   # LEGO's own instructions site only reliably covers sets from about here on
+
+
+def instructions_links(set_num, year=None, name=""):
+    """Places that have building instructions for a set, best first for its age.
+    LEGO.com only has newer sets; older ones live as scans on Peeron, Brickset,
+    Rebrickable (links to scans other people upload) or wherever a web search finds them."""
+    from urllib.parse import quote_plus
+    base = set_num.split("-")[0]
+    lego = ("LEGO.com (sets from about 2002 on)",
+            "https://www.lego.com/service/buildinginstructions/" + base)
+    peeron = ("Peeron - scanned instructions for older sets", f"http://www.peeron.com/scans/{set_num}/")
+    brickset = ("Brickset", f"https://brickset.com/sets/{set_num}")
+    rebrick = ("Rebrickable", f"https://rebrickable.com/sets/{set_num}/")
+    search = ("Search the web", "https://www.google.com/search?q="
+              + quote_plus(f"LEGO {base} {name} instructions".strip()))
+    old = year is not None and int(year) < LEGO_SITE_FROM
+    return [peeron, brickset, rebrick, search, lego] if old else [lego, brickset, rebrick, peeron, search]
+
+
+def instructions_url(set_num, year=None, name=""):
+    return instructions_links(set_num, year, name)[0][1]
 
 
 METAL = ("steel", "metal", "magnet cylindrical", "magnet  ", "bulb", "lamp")
@@ -197,7 +217,10 @@ def generate_set(lib, sdb, set_num, out_dir, stud=0.0, tube=0.0, spares=False, m
     # parts list
     with open(os.path.join(folder, "Parts list.txt"), "w", encoding="utf-8") as f:
         f.write(f"{set_num}  {info[1]}  ({info[2]}, {info[3]})\n")
-        f.write(f"Building instructions: {instructions_url(set_num)}\n\n")
+        f.write("Building instructions:\n")
+        for label, url in instructions_links(set_num, info[2], info[1]):
+            f.write(f"  {label}: {url}\n")
+        f.write("\n")
         f.write(f"PRINTED - {done} pieces, sorted into a folder per colour:\n")
         f.write("\n".join(lines) + "\n")
         warn = [r for r in rows if r["ld"] and unprintable_reason(r) and not unprintable_reason(r).startswith("metal")]
