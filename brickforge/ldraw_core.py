@@ -14,6 +14,9 @@ STUD_NAMES = re.compile(r"^(stud|stud2|stud2a|stud-logo\d*|stud2-logo\d*)\.dat$"
 TUBE_NAMES = re.compile(r"^stud4[a-z0-9]*\.dat$")
 STUD_DIA = 4.8   # mm, LDraw stud.dat (radius 6 LDU)
 TUBE_DIA = 6.4   # mm, LDraw stud4.dat outer (radius 8 LDU)
+LDRAW_STUD_H = 1.6  # mm, LDraw stud.dat height (4 LDU)
+STUD_HEIGHT = 1.7   # mm, real LEGO stud height - LDraw draws them 0.1 mm short
+                    # (the hand-made 6205 used 1.7 and fitted best; 1.6 prints a layer short)
 
 
 class Library:
@@ -230,6 +233,7 @@ class Flattener:
         self.lib = lib
         self.stud_scale = (STUD_DIA + stud_adjust) / STUD_DIA
         self.tube_scale = (TUBE_DIA + tube_adjust) / TUBE_DIA
+        self.stud_hscale = STUD_HEIGHT / LDRAW_STUD_H
         self.cache = {}
         self.missing = set()
 
@@ -275,8 +279,9 @@ class Flattener:
                 pos = np.array(v[0:3])
                 M = np.array(v[3:12]).reshape(3, 3)
                 base = sub.replace("\\", "/").lower().split("/")[-1]
-                if STUD_NAMES.match(base) and self.stud_scale != 1.0:
-                    M = M @ np.diag([self.stud_scale, 1.0, self.stud_scale])
+                if STUD_NAMES.match(base) and (self.stud_scale != 1.0 or self.stud_hscale != 1.0):
+                    # stud.dat sits on y=0 and rises to y=-4, so a y scale grows it upward only
+                    M = M @ np.diag([self.stud_scale, self.stud_hscale, self.stud_scale])
                 elif TUBE_NAMES.match(base) and self.tube_scale != 1.0:
                     M = M @ np.diag([self.tube_scale, 1.0, self.tube_scale])
                 child = self.flatten(sub, depth + 1)

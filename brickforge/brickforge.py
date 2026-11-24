@@ -12,7 +12,7 @@ import ldraw_core as core
 import sets_core
 
 APP = "BrickForge"
-VERSION = "1.5"
+VERSION = "1.6"
 ALL = "All categories"
 
 
@@ -232,12 +232,16 @@ class App:
         self.preview_req = 0
         self.mesh_cache = {}
         self._search_job = None
-        self.settings = {"out": default_out(), "stud": 0.0, "tube": 0.0}
+        self.settings = {"out": default_out(), "stud": 0.0, "tube": 0.0, "stud_h": core.STUD_HEIGHT}
         try:
             with open(settings_path()) as f:
                 self.settings.update(json.load(f))
         except Exception:
             pass
+        try:
+            core.STUD_HEIGHT = float(self.settings.get("stud_h") or 1.7)
+        except (TypeError, ValueError):
+            core.STUD_HEIGHT = 1.7
 
         root.title(f"{APP} {VERSION} - LEGO part to STL")
         root.geometry("1180x800")
@@ -350,9 +354,13 @@ class App:
         self.tube_var = tk.DoubleVar(value=self.settings["tube"])
         ttk.Spinbox(opts, from_=-0.5, to=0.5, increment=0.05, textvariable=self.tube_var,
                     width=7, format="%.2f").grid(row=0, column=3, padx=4)
+        ttk.Label(opts, text="Stud height (mm):").grid(row=0, column=4, sticky="w", padx=(16, 6))
+        self.studh_var = tk.DoubleVar(value=self.settings["stud_h"])
+        ttk.Spinbox(opts, from_=1.4, to=2.0, increment=0.05, textvariable=self.studh_var,
+                    width=7, format="%.2f").grid(row=0, column=5, padx=4, sticky="w")
         ttk.Label(opts, foreground="#666",
-                  text="0 = standard.  Too tight: go negative.  Too loose: go positive.").grid(
-            row=0, column=4, columnspan=3, sticky="w", padx=12)
+                  text="Sizes: 0 = standard. Too tight: go negative. Too loose: go positive. Stud height 1.70 = real LEGO.").grid(
+            row=2, column=0, columnspan=8, sticky="w", padx=6, pady=(0, 4))
         ttk.Label(opts, text="Save to:").grid(row=1, column=0, sticky="w", padx=6, pady=4)
         self.out_var = tk.StringVar(value=self.settings["out"])
         ttk.Entry(opts, textvariable=self.out_var).grid(row=1, column=1, columnspan=5, sticky="ew", padx=4)
@@ -670,8 +678,12 @@ class App:
 
     def _save_settings(self):
         try:
+            h = self._num(self.studh_var) or 1.7
+            if abs(h - core.STUD_HEIGHT) > 1e-6:
+                core.STUD_HEIGHT = h
+                self.mesh_cache.clear()
             self.settings.update(out=self.out_var.get(), stud=self._num(self.stud_var),
-                                 tube=self._num(self.tube_var))
+                                 tube=self._num(self.tube_var), stud_h=h)
             with open(settings_path(), "w") as f:
                 json.dump(self.settings, f, indent=1)
         except Exception:

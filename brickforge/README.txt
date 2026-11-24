@@ -34,6 +34,8 @@ USING IT
   cluttered - tick the box under the search to show them too.
 - Fit: Stud size / Tube size in mm. 0 is standard. If bricks are too tight,
   try -0.05 or -0.1; too loose, +0.05 or +0.1.
+- Stud height: 1.70 mm (real LEGO). The LDraw shapes draw studs 1.6 mm tall,
+  which printed one layer short at 0.2 mm layers; v1.6 grows them to 1.7.
 - Parts are placed flat on the bed, studs up, centred. Plain studs, no logos.
 - Sealing: the library's shapes are made for drawing, not printing (studs just
   sit on top of plates, seams don't quite meet). BrickForge seals each part
