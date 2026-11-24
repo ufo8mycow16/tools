@@ -371,8 +371,9 @@ def fix_tjunctions(V, F, tol=1e-4, rounds=6):
             L2 = dv @ dv
             if L2 < 1e-16:
                 continue
-            lo = np.floor(np.minimum(pa, pb) / cell).astype(int)
-            hi = np.floor(np.maximum(pa, pb) / cell).astype(int)
+            # widen by the tolerance: a point at y=-0.0000001 sits in the cell below y=0
+            lo = np.floor((np.minimum(pa, pb) - tol) / cell).astype(int)
+            hi = np.floor((np.maximum(pa, pb) + tol) / cell).astype(int)
             if np.prod(hi - lo + 1) > 4000:
                 continue
             cand = []
@@ -495,6 +496,12 @@ def seal(V, F, log=None):
     F2 = drop_duplicates(V2, F2)
     F2 = fix_tjunctions(V2, F2)
     F2 = drop_duplicates(V2, F2)
+    # drop zero-area slivers (three points in a line) - they're leftovers, and each of
+    # their edges counts as a loose edge to a slicer (e.g. 17454's windscreen frame)
+    t = V2[F2]
+    sliver = np.linalg.norm(np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0]), axis=1) < 1e-6
+    if sliver.any():
+        F2 = F2[~sliver]
     used = np.unique(F2)
     remap = -np.ones(len(V2), np.int64)
     remap[used] = np.arange(len(used))
