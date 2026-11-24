@@ -276,16 +276,25 @@ def princess(right=0.0, left=0.0):
                   hat=("3625.dat", RED), right=right, left=left)
 
 
-def lady_knight(right=0.0, left=0.0, visor_up=60):
-    """Series 23 Knight of the Yellow Castle - her printed torso and armour aren't in
-    LDraw, so plain parts in her colours; visor tipped up so you can see her face."""
+def lady_knight(right=0.0, left=0.0, visor_up=85, sword=True, shield=True):
+    """Series 23 Knight of the Yellow Castle. Her printed torso and armour aren't in LDraw,
+    so: plain parts in her colours, plus a small copy of her crown shield (3846p4x - crown on
+    lilac with gold border, the same design as her chest print) laid on the breastplate.
+    Gold sword and the crown shield in her hands; visor tipped up so you can see her face."""
     t = figure(LBGRAY, SANDBLUE, YELLOW, LBGRAY, LBGRAY, None, head_part="3626bp08.dat",
                legs_part="37364.dat", hat=("30124b.dat", LBGRAY), neck=("2587.dat", FSILVER),
-               right=right, left=left)
+               right=right, left=left,
+               # sword points up when the arm is raised, along the arm when it's down
+               right_item=("3847.dat", GOLD, HELD @ rx(180) if right > 90 else HELD, (0, 0, 0))
+               if sword else None,
+               left_item=("3846p4x.dat", LBGRAY, HELD, (0, 0, 0)) if shield else None)
     pivot = np.array([0, -16, 0.7])                   # visor pins on the helmet
     Rv = rx(-visor_up)
     t += "\n" + line1(GOLD, pivot, Rv, "2594b.dat")
     t += "\n" + line1(DPINK, pivot + Rv @ (np.array([0, -36, -12]) - pivot), np.eye(3), "64647.dat")
+    # chest crest: the shield shrunk flat onto the breastplate (front of the plate ~ z -20.4)
+    sc = np.diag([0.30, 0.30, 0.04])
+    t += "\n" + line1(LBGRAY, (0, 13 - 9.2 * 0.30, -20.4 + 10 * 0.04 - 0.35), sc, "3846p4x.dat")
     return t
 
 
@@ -327,7 +336,7 @@ def make_all(lib):
         im = im.transpose(0)            # mirror: he faces right, towards the button
         im.save(os.path.join(HERE, name + ".png"))
         out[name] = im.size
-    im, _ = render(lib, place(lady_knight(right=150, visor_up=85), (0, 0, 0), yaw=-30),
+    im, _ = render(lib, place(lady_knight(right=150), (0, 0, 0), yaw=-25),
                    os.path.join(HERE, "lady_knight_wave.png"), height=110, yaw=0, pitch=10)
     out["lady_knight_wave"] = im.size
     im, _ = render(lib, knight(), os.path.join(HERE, "knight_guard.png"), height=130, yaw=-28, pitch=12)
