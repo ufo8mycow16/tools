@@ -431,16 +431,21 @@ def make_printable(verts, faces, open_edges):
                 return V2, F2, 0, "sealed"
         except Exception:
             pass
+    why = ""
     try:
         import winrepair
-        r = winrepair.repair(verts, faces)
-        if r is not None and len(r[1]):
-            V2, F2 = r
-            _, _, o2 = clean_mesh(V2[F2])
-            return V2, F2, o2, "sealed (Windows repair)" if o2 == 0 else "Windows repair (partly)"
-    except Exception:
-        pass
-    return verts, faces, open_edges, "not sealed - Bambu Studio will offer to fix it"
+        if not winrepair.AVAILABLE:
+            why = "Windows repair not available: " + winrepair.why_unavailable()
+        else:
+            r = winrepair.repair(verts, faces)
+            if r is not None and len(r[1]):
+                V2, F2 = r
+                _, _, o2 = clean_mesh(V2[F2])
+                return V2, F2, o2, "sealed (Windows repair)" if o2 == 0 else "Windows repair (partly) - Bambu Studio will finish it"
+            why = "Windows repair failed: " + (winrepair.last_error() or "no reason given")
+    except Exception as e:
+        why = f"Windows repair failed: {e}"
+    return verts, faces, open_edges, "not sealed - Bambu Studio will offer to fix it" + (f" ({why})" if why else "")
 
 
 def generate(lib, number, out_dir, stud_adjust=0.0, tube_adjust=0.0, seal=True):

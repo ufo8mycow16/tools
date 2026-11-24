@@ -22,6 +22,7 @@ except Exception as e:          # noqa
     AVAILABLE = False
     _err = e
 
+REPAIR_TIMEOUT = 90   # seconds
 NS = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
 
 
@@ -133,8 +134,16 @@ def repair(V, F):
     if not AVAILABLE:
         return None
     try:
-        data = asyncio.run(_repair_async(mesh_to_3mf(V, F)))
+        # never let a stuck repair hang BrickForge - give up after a minute and a half
+        data = asyncio.run(asyncio.wait_for(_repair_async(mesh_to_3mf(V, F)), timeout=REPAIR_TIMEOUT))
         return mesh_from_3mf(data)
+    except asyncio.TimeoutError:
+        _err = "Windows took too long to repair it"
+        return None
     except Exception as e:      # noqa
         _err = e
         return None
+
+
+def last_error():
+    return str(_err) if _err else ""

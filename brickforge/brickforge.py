@@ -12,7 +12,7 @@ import ldraw_core as core
 import sets_core
 
 APP = "BrickForge"
-VERSION = "1.7"
+VERSION = "1.8"
 ALL = "All categories"
 
 
@@ -566,7 +566,12 @@ class App:
         if not s:
             messagebox.showinfo(APP, "Pick a set first.")
             return
-        if self.busy or not self.lib:
+        if not self.lib:
+            messagebox.showinfo(APP, "The parts library is still loading - give it a moment.")
+            return
+        if self.busy:
+            messagebox.showinfo(APP, "BrickForge is still busy with the last job - watch the progress bar "
+                                     "and try again when it's finished.")
             return
         info = self.sdb.info(s)
         if not messagebox.askyesno(APP, f"Make every printable piece of {info[0]} {info[1]}?\n\n"
@@ -790,6 +795,8 @@ class App:
 
     def generate(self):
         if self.busy:
+            messagebox.showinfo(APP, "BrickForge is still busy with the last job - watch the progress bar "
+                                     "and try again when it's finished.")
             return
         if not self.lib:
             messagebox.showinfo(APP, "The parts library is still loading - give it a moment.")
