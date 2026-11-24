@@ -244,7 +244,9 @@ class App:
             core.STUD_HEIGHT = 1.7
 
         root.title(f"{APP} {VERSION} - LEGO part to STL")
-        root.geometry("1180x800")
+        # tall enough for the knights and the lists, but never taller than the screen
+        h = max(700, min(940, root.winfo_screenheight() - 90))
+        root.geometry(f"1180x{h}")
         root.minsize(980, 680)
         self._build()
         self.log("Loading parts library...")
@@ -298,7 +300,7 @@ class App:
             words = ttk.Frame(head)
             words.pack(side="left", fill="x", expand=True, padx=16)
             ttk.Label(words, text="Any LEGO part or set, ready to print",
-                      font=("Segoe UI", 15, "bold")).pack(anchor="w", pady=(28, 2))
+                      font=("Segoe UI", 15, "bold")).pack(anchor="w", pady=(18, 2))
             ttk.Label(words, text="Pick a part or a whole set, press Generate - the knights do the rest.",
                       foreground="#555", font=("Segoe UI", 10)).pack(anchor="w")
         main = ttk.Frame(self.root, padding=8)
@@ -381,7 +383,7 @@ class App:
         mk = ttk.LabelFrame(right, text="Make list (you can also type part numbers here)")
         mk.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
         mk.columnconfigure(0, weight=1)
-        mk.rowconfigure(0, weight=1)
+        mk.rowconfigure(0, weight=1, minsize=90)        # the make list box never squashes away
         self.parts_txt = tk.Text(mk, height=6, width=30, font=("Consolas", 11), undo=True)
         self.parts_txt.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=6, pady=6)
         ttk.Button(mk, text="Clear list", command=lambda: self.parts_txt.delete("1.0", "end")).grid(
@@ -447,8 +449,8 @@ class App:
     # ---------- sets tab ----------
     def _build_sets_tab(self, tab):
         tab.columnconfigure(1, weight=1)
-        tab.rowconfigure(3, weight=1)
-        tab.rowconfigure(5, weight=2)
+        tab.rowconfigure(3, weight=1, minsize=140)      # sets list
+        tab.rowconfigure(5, weight=2, minsize=150)      # what's in the box
         ttk.Label(tab, text="Theme:").grid(row=0, column=0, sticky="w", padx=6, pady=(6, 3))
         self.theme_var = tk.StringVar(value="All themes")
         self.theme_box = ttk.Combobox(tab, textvariable=self.theme_var, state="readonly", height=30)

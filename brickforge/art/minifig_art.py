@@ -327,19 +327,19 @@ def banner(lib, out_png, title="BrickForge", height=230):
 def make_all(lib):
     """Every picture BrickForge's window uses."""
     out = {}
-    out["banner"] = banner(lib, os.path.join(HERE, "banner.png"), height=130)
+    out["banner"] = banner(lib, os.path.join(HERE, "banner.png"), height=118)
     # knight at the Generate button: arm resting, then arm out pressing (turned so the arm
     # points left - the app shows him mirrored, beside the button)
     for name, arm in (("knight_ready", 25), ("knight_press", 80)):
         im, _ = render(lib, place(knight(right=arm, lance=False), (0, 0, 0), yaw=30),
-                       None, height=110, yaw=0, pitch=10)
+                       None, height=80, yaw=0, pitch=10)
         im = im.transpose(0)            # mirror: he faces right, towards the button
         im.save(os.path.join(HERE, name + ".png"))
         out[name] = im.size
     im, _ = render(lib, place(lady_knight(right=150), (0, 0, 0), yaw=-25),
-                   os.path.join(HERE, "lady_knight_wave.png"), height=110, yaw=0, pitch=10)
+                   os.path.join(HERE, "lady_knight_wave.png"), height=80, yaw=0, pitch=10)
     out["lady_knight_wave"] = im.size
-    im, _ = render(lib, knight(), os.path.join(HERE, "knight_guard.png"), height=130, yaw=-28, pitch=12)
+    im, _ = render(lib, knight(), os.path.join(HERE, "knight_guard.png"), height=110, yaw=-28, pitch=12)
     out["knight_guard"] = im.size
     return out
 
