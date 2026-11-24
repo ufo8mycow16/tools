@@ -37,6 +37,24 @@ class Lib:
         self.cache = {}
         self.colours = self._colours()
 
+    def add_virtual(self, name, text):
+        """A made-up part (e.g. a recoloured copy) that figures can use like any other."""
+        key = name.lower()
+        self.files[key] = (0, None)
+        self.cache[key] = text
+
+    def recoloured(self, part, new_name, swap):
+        """Copy of a part with colour codes swapped on its own lines (swap = {old: new})."""
+        out = []
+        for l in (self.read(part) or "").splitlines():
+            p = l.split()
+            if p and p[0] in ("1", "2", "3", "4", "5") and len(p) > 1 and p[1] in swap:
+                p[1] = str(swap[p[1]])
+                l = " ".join(p)
+            out.append(l)
+        self.add_virtual(new_name, "\n".join(out))
+        return new_name
+
     def read(self, name):
         key = name.strip().replace("\\", "/").lower()
         if key not in self.files:
@@ -293,8 +311,10 @@ def lady_knight(right=0.0, left=0.0, visor_up=85, sword=True, shield=True):
     t += "\n" + line1(GOLD, pivot, Rv, "2594b.dat")
     t += "\n" + line1(DPINK, pivot + Rv @ (np.array([0, -36, -12]) - pivot), np.eye(3), "64647.dat")
     # chest crest: the shield shrunk flat onto the breastplate (front of the plate ~ z -20.4)
-    sc = np.diag([0.30, 0.30, 0.04])
-    t += "\n" + line1(LBGRAY, (0, 13 - 9.2 * 0.30, -20.4 + 10 * 0.04 - 0.35), sc, "3846p4x.dat")
+    # her real breastplate (2587pb36, not in LDraw) has the crown on PINK with a gold border,
+    # so the crest is a pink-recoloured copy of the lilac shield (crest_pink.dat, made in make_all)
+    sc = np.diag([0.36, 0.36, 0.04])
+    t += "\n" + line1(LBGRAY, (0, 12 - 9.2 * 0.36, -20.4 + 10 * 0.04 - 0.35), sc, "crest_pink.dat")
     return t
 
 
@@ -326,6 +346,7 @@ def banner(lib, out_png, title="BrickForge", height=230):
 
 def make_all(lib):
     """Every picture BrickForge's window uses."""
+    lib.recoloured("3846p4x.dat", "crest_pink.dat", {"69": DPINK})
     out = {}
     out["banner"] = banner(lib, os.path.join(HERE, "banner.png"), height=118)
     # knight at the Generate button: arm resting, then arm out pressing (turned so the arm
