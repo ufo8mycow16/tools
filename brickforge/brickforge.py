@@ -232,7 +232,7 @@ class App:
         self.preview_req = 0
         self.mesh_cache = {}
         self._search_job = None
-        self.settings = {"out": default_out(), "stud": 0.0, "tube": 0.0, "stud_h": core.STUD_HEIGHT}
+        self.settings = {"out": default_out(), "stud": 0.0, "tube": 0.0, "stud_h": core.STUD_HEIGHT, "plates": True}
         try:
             with open(settings_path()) as f:
                 self.settings.update(json.load(f))
@@ -339,8 +339,15 @@ class App:
         self.parts_txt.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=6, pady=6)
         ttk.Button(mk, text="Clear list", command=lambda: self.parts_txt.delete("1.0", "end")).grid(
             row=1, column=0, sticky="w", padx=6, pady=(0, 6))
-        self.gen_btn = ttk.Button(mk, text="Generate STLs", command=self.generate)
-        self.gen_btn.grid(row=1, column=1, sticky="e", padx=6, pady=(0, 6))
+        cf = ttk.Frame(mk)
+        cf.grid(row=1, column=1, sticky="e", padx=6, pady=(0, 6))
+        ttk.Label(cf, text="How many:").pack(side="left")
+        self.copies_var = tk.IntVar(value=1)
+        ttk.Spinbox(cf, from_=1, to=200, increment=1, textvariable=self.copies_var, width=5).pack(side="left", padx=(4, 10))
+        self.gen_btn = ttk.Button(cf, text="Generate", command=self.generate)
+        self.gen_btn.pack(side="left")
+        ttk.Label(mk, foreground="#666", text="Different counts per part: type them in the list, e.g.  3001 x10").grid(
+            row=2, column=0, columnspan=2, sticky="w", padx=6, pady=(0, 6))
 
         # ---- fit / output
         opts = ttk.LabelFrame(main, text="Fit and output")
@@ -358,6 +365,9 @@ class App:
         self.studh_var = tk.DoubleVar(value=self.settings["stud_h"])
         ttk.Spinbox(opts, from_=1.4, to=2.0, increment=0.05, textvariable=self.studh_var,
                     width=7, format="%.2f").grid(row=0, column=5, padx=4, sticky="w")
+        self.plates_var = tk.BooleanVar(value=bool(self.settings.get("plates", True)))
+        ttk.Checkbutton(opts, text="Several of a piece: lay them out on one build plate (3MF)",
+                        variable=self.plates_var).grid(row=0, column=6, columnspan=2, sticky="w", padx=(16, 6))
         ttk.Label(opts, foreground="#666",
                   text="Sizes: 0 = standard. Too tight: go negative. Too loose: go positive. Stud height 1.70 = real LEGO.").grid(
             row=2, column=0, columnspan=8, sticky="w", padx=6, pady=(0, 4))
@@ -602,7 +612,7 @@ class App:
     def _run_set(self, s, out, stud, tube, spares, figs):
         try:
             folder = sets_core.generate_set(self.lib, self.sdb, s, out, stud, tube, spares, figs,
-                                            log=self.log, progress=lambda i, n: self.q.put(("progress", (i, n))))
+                                            plates=bool(self.plates_var.get()), log=self.log, progress=lambda i, n: self.q.put(("progress", (i, n))))
             self.q.put(("open", folder))
         except Exception as e:
             self.log(f"Set failed - {e}")
@@ -701,7 +711,7 @@ class App:
                 core.STUD_HEIGHT = h
                 self.mesh_cache.clear()
             self.settings.update(out=self.out_var.get(), stud=self._num(self.stud_var),
-                                 tube=self._num(self.tube_var), stud_h=h)
+                                 tube=self._num(self.tube_var), stud_h=h, plates=bool(self.plates_var.get()))
             with open(settings_path(), "w") as f:
                 json.dump(self.settings, f, indent=1)
         except Exception:
@@ -814,10 +824,14 @@ class App:
         if not self.lib:
             messagebox.showinfo(APP, "The parts library is still loading - give it a moment.")
             return
-        nums = [n for n in re.split(r"[\s,;]+", self.parts_txt.get("1.0", "end")) if n]
+        try:
+            default_n = max(1, int(self.copies_var.get()))
+        except (tk.TclError, ValueError):
+            default_n = 1
+        nums = self._parse_make_list(self.parts_txt.get("1.0", "end"), default_n)
         if not nums:
             sel = self.tree.selection()
-            nums = [self.tree.item(s, "values")[0] for s in sel]
+            nums = [(self.tree.item(s, "values")[0], default_n) for s in sel]
         if not nums:
             messagebox.showinfo(APP, "Pick a part from the list (or type a part number in the make list) first.")
             return
@@ -825,14 +839,47 @@ class App:
         self.gen_btn.configure(state="disabled")
         self._save_settings()
         out, stud, tube = self.out_var.get(), self._num(self.stud_var), self._num(self.tube_var)
-        threading.Thread(target=self._run, args=(nums, out, stud, tube), daemon=True).start()
+        plates = bool(self.plates_var.get())
+        threading.Thread(target=self._run, args=(nums, out, stud, tube, plates), daemon=True).start()
 
-    def _run(self, nums, out, stud, tube):
+    def _parse_make_list(self, text, default_n=1):
+        """Part numbers with optional counts: "3001 x10", "3001 x 10", "3001*10", "3001x10".
+        A count written straight onto a number (3001x10) only counts if 3001 is a real part
+        and 3001x10 isn't - some LDraw numbers have an x in them."""
+        out = []
+
+        def known(num):
+            try:
+                return self.lib.resolve(num)[0] is not None
+            except Exception:
+                return False
+        toks = [t for t in re.split(r"[\s,;]+", text) if t]
+        i = 0
+        while i < len(toks):
+            t = toks[i]
+            m = re.fullmatch(r"[x\u00d7*](\d+)", t, re.I)
+            if m and out:                                  # "x10" after a number
+                out[-1] = (out[-1][0], max(1, int(m.group(1))))
+                i += 1
+                continue
+            if t.lower() in ("x", "\u00d7", "*") and out and i + 1 < len(toks) and toks[i + 1].isdigit():
+                out[-1] = (out[-1][0], max(1, int(toks[i + 1])))   # "x 10"
+                i += 2
+                continue
+            m = re.fullmatch(r"(.+?)[x\u00d7*](\d+)", t, re.I)
+            if m and not known(t) and known(m.group(1)):
+                out.append((m.group(1), max(1, int(m.group(2)))))
+            else:
+                out.append((t, default_n))
+            i += 1
+        return out
+
+    def _run(self, nums, out, stud, tube, plates=True):
         made = 0
-        for i, n in enumerate(nums, 1):
+        for i, (n, copies) in enumerate(nums, 1):
             self.q.put(("progress", (i - 1, len(nums))))
             try:
-                r = core.generate(self.lib, n, out, stud, tube)
+                r = core.generate(self.lib, n, out, stud, tube, copies=copies, plates=plates)
                 if not r["ok"]:
                     msg = f"{n}: not in the library."
                     if r["suggest"]:
@@ -841,6 +888,8 @@ class App:
                     continue
                 w, d, h = r["size"]
                 line = f'{r["number"]}: {r["desc"].lstrip("~=_|")}  ->  {w:.1f} x {d:.1f} x {h:.1f} mm  [{r["sealed"]}]'
+                if copies > 1:
+                    line += f"  x{copies}" + ("  (on one build plate)" if plates else "")
                 if r["desc"].startswith("~Moved to"):
                     line += "  (old number - library points it at the new one)"
                 self.log(line)
@@ -851,7 +900,7 @@ class App:
                 self.log(f"{n}: failed - {e}")
                 traceback.print_exc()
         self.q.put(("progress", (len(nums), len(nums))))
-        self.log(f"Done - {made} STL file(s) saved to {out}")
+        self.log(f"Done - {made} file(s) saved to {out}")
         self.q.put(("done", None))
 
 

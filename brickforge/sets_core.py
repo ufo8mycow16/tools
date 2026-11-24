@@ -166,7 +166,7 @@ def unprintable_reason(row):
 
 
 def generate_set(lib, sdb, set_num, out_dir, stud=0.0, tube=0.0, spares=False, minifigs=True,
-                 seal=True, log=print, progress=None, cancel=None):
+                 seal=True, log=print, progress=None, cancel=None, plates=True):
     info = sdb.info(set_num)
     rows = sdb.contents(set_num, spares, minifigs)
     folder = os.path.join(out_dir, core.safe_filename(f"{set_num} - {info[1]}"))
@@ -201,6 +201,7 @@ def generate_set(lib, sdb, set_num, out_dir, stud=0.0, tube=0.0, spares=False, m
         except Exception as e:
             log(f"  {ld}: failed - {e}")
     lines = []
+    by_colour = defaultdict(list)
     for (ld, colour), g in sorted(groups.items(), key=lambda x: (x[0][1], x[0][0])):
         if ld not in meshes:
             continue
@@ -208,10 +209,39 @@ def generate_set(lib, sdb, set_num, out_dir, stud=0.0, tube=0.0, spares=False, m
         desc = lib.description(ld).lstrip("~=_|")
         cdir = os.path.join(folder, core.safe_filename(colour))
         os.makedirs(cdir, exist_ok=True)
-        name = core.safe_filename(f"{ld} - {desc} - print {g['qty']}") + ".stl"
-        core.write_stl(os.path.join(cdir, name), V, F, f"{ld} {desc}")
+        if plates:
+            # one spool at a time (Dave's P2S has no AMS): every piece of this colour goes onto
+            # ready-packed build plates; each shape also saved on its own for reprints
+            sdir = os.path.join(cdir, "single pieces")
+            os.makedirs(sdir, exist_ok=True)
+            core.write_stl(os.path.join(sdir, core.safe_filename(f"{ld} - {desc}") + ".stl"),
+                           V, F, f"{ld} {desc}")
+            # string, chain and the like come as hundreds of little segments - they get a
+            # single-piece file but stay off the plates (use real string)
+            if not any(w in desc.lower() for w in ("string", "chain", "hose", "cable")):
+                by_colour[colour].append((ld, desc, g["qty"]))
+        else:
+            name = core.safe_filename(f"{ld} - {desc} - print {g['qty']}") + ".stl"
+            core.write_stl(os.path.join(cdir, name), V, F, f"{ld} {desc}")
         done += g["qty"]
         lines.append(f"  {g['qty']:4d} x  {colour:<22} {ld:<12} {desc}   [{how}]")
+    plate_lines = []
+    for colour, parts in by_colour.items():
+        cdir = os.path.join(folder, core.safe_filename(colour))
+        objects, pieces = {}, []
+        for ld, desc, qty in parts:
+            V, F, _ = meshes[ld]
+            size = V.max(axis=0) - V.min(axis=0)
+            objects[ld] = (V, F, f"{ld} {desc}")
+            pieces += [(ld, (float(size[0]), float(size[1])))] * qty
+        layout = core.pack_plates(pieces)
+        n = len(layout)
+        for i, pl in enumerate(layout, 1):
+            used = {k for k, *_ in pl}
+            name = core.safe_filename(f"{colour} - plate {i} of {n}") + ".3mf"
+            core.write_3mf(os.path.join(cdir, name), {k: objects[k] for k in used}, pl,
+                           f"{set_num} {colour} plate {i} of {n}")
+        plate_lines.append(f"  {colour:<22} {n} plate(s), {len(pieces)} pieces")
     if progress:
         progress(len(shapes), len(shapes))
     # parts list
@@ -221,6 +251,9 @@ def generate_set(lib, sdb, set_num, out_dir, stud=0.0, tube=0.0, spares=False, m
         for label, url in instructions_links(set_num, info[2], info[1]):
             f.write(f"  {label}: {url}\n")
         f.write("\n")
+        if plate_lines:
+            f.write("BUILD PLATES (one colour at a time - open a plate in Bambu Studio and print):\n")
+            f.write("\n".join(plate_lines) + "\n\n")
         f.write(f"PRINTED - {done} pieces, sorted into a folder per colour:\n")
         f.write("\n".join(lines) + "\n")
         warn = [r for r in rows if r["ld"] and unprintable_reason(r) and not unprintable_reason(r).startswith("metal")]

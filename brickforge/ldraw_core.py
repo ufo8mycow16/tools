@@ -4,7 +4,7 @@ Reads the LDraw parts library straight out of a zip file, flattens a part
 into triangles (following the library's face-direction rules), applies the
 stud/tube fit adjustments, cleans the mesh and writes a binary STL in mm.
 """
-import io, os, re, struct, zipfile
+import io, math, os, re, struct, zipfile
 import numpy as np
 
 LDU = 0.4  # 1 LDraw unit = 0.4 mm
@@ -407,6 +407,124 @@ def write_stl(path, verts, faces, title="BrickForge"):
         f.write(rec.tobytes())
 
 
+PLATE_SIZE = (256.0, 256.0)   # mm - Dave's Bambu P2S (also X1/P1/A1)
+PLATE_MARGIN = 6.0             # mm kept clear round the edge
+PLATE_GAP = 4.0                # mm between pieces
+
+
+def plate_layout(size_xy, copies, plate=PLATE_SIZE, gap=PLATE_GAP):
+    """Grid positions (x, y of each copy's corner) for `copies` of one piece, centred on the plate."""
+    w, d = float(size_xy[0]) + gap, float(size_xy[1]) + gap
+    cols = max(1, min(copies, int((plate[0] - 2 * PLATE_MARGIN + gap) // w) or 1))
+    sq = max(1, math.ceil(math.sqrt(copies * d / max(w, 1e-6))))
+    cols = max(1, min(cols, sq))
+    rows = math.ceil(copies / cols)
+    gw, gd = cols * w - gap, rows * d - gap
+    x0, y0 = (plate[0] - gw) / 2, (plate[1] - gd) / 2
+    return [(x0 + (i % cols) * w, y0 + (i // cols) * d) for i in range(copies)]
+
+
+def pack_plates(pieces, plate=PLATE_SIZE, gap=PLATE_GAP, margin=PLATE_MARGIN):
+    """Pack pieces onto as few build plates as it takes.
+    pieces: list of (key, (w, d)) - one entry per copy. Returns a list of plates, each a
+    list of (key, x, y, rotated) - rotated pieces are turned 90 degrees to fit better.
+    Simple shelf packing: biggest first, rows left to right, front to back."""
+    W, D = plate[0] - 2 * margin, plate[1] - 2 * margin
+    items = []
+    for key, (w, d) in pieces:
+        rot = w < d and d <= W           # lie long pieces along the rows
+        if w > W and d <= W:
+            rot = True
+        items.append((key, (d, w) if rot else (w, d), rot))
+    items.sort(key=lambda it: (-it[1][1], -it[1][0]))
+    plates, cur = [], []
+    x = y = shelf = 0.0
+    for key, (w, d), rot in items:
+        if x > 0 and x + w > W:                      # next row
+            x, y, shelf = 0.0, y + shelf + gap, 0.0
+        if cur and y + d > D:                        # plate full
+            plates.append(cur)
+            cur, x, y, shelf = [], 0.0, 0.0, 0.0
+        cur.append((key, margin + x, margin + y, rot))
+        x += w + gap
+        shelf = max(shelf, d)
+    if cur:
+        plates.append(cur)
+    # centre each plate's layout on the bed
+    out = []
+    for pl in plates:
+        sizes = {k: s for k, s in pieces}
+        maxx = max(px + (sizes[k][1] if r else sizes[k][0]) for k, px, py, r in pl)
+        maxy = max(py + (sizes[k][0] if r else sizes[k][1]) for k, px, py, r in pl)
+        dx = (plate[0] - (maxx - margin)) / 2 - margin
+        dy = (plate[1] - (maxy - margin)) / 2 - margin
+        out.append([(k, px + dx, py + dy, r) for k, px, py, r in pl])
+    return out
+
+
+def _esc(t):
+    return t.replace("&", "and").replace("<", "").replace(">", "").replace('"', "")
+
+
+def write_3mf(path, objects, placements, title="BrickForge"):
+    """A 3MF build plate. objects: {key: (V, F, name)}; placements: [(key, x, y, rotated)].
+    Each shape is stored once and placed as many times as needed (instances)."""
+    import zipfile
+    ids, res = {}, []
+    for n, (key, (V, F, name)) in enumerate(objects.items(), 1):
+        V = np.asarray(V, float)
+        V = V - V.min(axis=0)
+        ids[key] = (n, V.max(axis=0))
+        vx = "".join(f'<vertex x="{a:.4f}" y="{b:.4f}" z="{c:.4f}"/>' for a, b, c in V)
+        tr = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"/>' for a, b, c in np.asarray(F))
+        res.append(f'<object id="{n}" type="model" name="{_esc(name)}"><mesh>'
+                   f'<vertices>{vx}</vertices><triangles>{tr}</triangles></mesh></object>')
+    items = []
+    for key, x, y, rot in placements:
+        oid, size = ids[key]
+        if rot:   # turn 90 degrees, then shift so it still starts at x, y
+            items.append(f'<item objectid="{oid}" transform="0 1 0 -1 0 0 0 0 1 {x + size[1]:.3f} {y:.3f} 0"/>')
+        else:
+            items.append(f'<item objectid="{oid}" transform="1 0 0 0 1 0 0 0 1 {x:.3f} {y:.3f} 0"/>')
+    model = ('<?xml version="1.0" encoding="UTF-8"?>'
+             '<model unit="millimeter" xml:lang="en-US" '
+             'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">'
+             f'<metadata name="Title">{_esc(title)}</metadata>'
+             f'<resources>{"".join(res)}</resources><build>{"".join(items)}</build></model>')
+    ctypes = ('<?xml version="1.0" encoding="UTF-8"?>'
+              '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+              '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+              '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>'
+              '</Types>')
+    rels = ('<?xml version="1.0" encoding="UTF-8"?>'
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Target="/3D/3dmodel.model" Id="rel0" '
+            'Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>')
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", ctypes)
+        z.writestr("_rels/.rels", rels)
+        z.writestr("3D/3dmodel.model", model)
+
+
+def write_3mf_plate(path, verts, faces, copies, title="BrickForge"):
+    """One piece `copies` times on a plate (more plates' worth just packs tighter - see pack_plates)."""
+    V = np.asarray(verts, float)
+    size = V.max(axis=0) - V.min(axis=0)
+    spots = plate_layout(size[:2], copies)
+    write_3mf(path, {"p": (V, faces, title)}, [("p", x, y, False) for x, y in spots], title)
+
+
+def save_piece(folder, stem, verts, faces, copies, title, plates=True):
+    """STL for a single piece; a ready-laid-out 3MF build plate when there are several."""
+    if plates and copies > 1:
+        path = os.path.join(folder, stem + f" x{copies}.3mf")
+        write_3mf_plate(path, verts, faces, copies, title)
+    else:
+        path = os.path.join(folder, stem + ".stl")
+        write_stl(path, verts, faces, title)
+    return path
+
+
 def safe_filename(s):
     s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", s)
     s = re.sub(r"\s+", " ", s).strip(" .")
@@ -448,8 +566,8 @@ def make_printable(verts, faces, open_edges):
     return verts, faces, open_edges, "not sealed - Bambu Studio will offer to fix it" + (f" ({why})" if why else "")
 
 
-def generate(lib, number, out_dir, stud_adjust=0.0, tube_adjust=0.0, seal=True):
-    """Make one STL. Returns dict with info for the log."""
+def generate(lib, number, out_dir, stud_adjust=0.0, tube_adjust=0.0, seal=True, copies=1, plates=True):
+    """Make one STL (or a 3MF build plate with `copies` of it). Returns dict with info for the log."""
     resolved, sugg = lib.resolve(number)
     if resolved is None:
         return {"ok": False, "number": number, "suggest": sugg}
@@ -459,10 +577,9 @@ def generate(lib, number, out_dir, stud_adjust=0.0, tube_adjust=0.0, seal=True):
     if seal:
         verts, faces, open_edges, how = make_printable(verts, faces, open_edges)
     size = verts.max(axis=0) - verts.min(axis=0)
-    name = safe_filename(f"{resolved} - {desc.lstrip('~=_|')}") + ".stl"
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, name)
-    write_stl(path, verts, faces, f"{resolved} {desc}")
+    path = save_piece(out_dir, safe_filename(f"{resolved} - {desc.lstrip('~=_|')}"),
+                      verts, faces, max(1, int(copies)), f"{resolved} {desc}", plates)
     return {"ok": True, "number": resolved, "desc": desc, "path": path,
             "faces": len(faces), "size": size, "open_edges": open_edges, "missing": missing,
             "sealed": how}

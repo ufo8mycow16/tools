@@ -50,3 +50,14 @@ Download a newer complete.zip from ldraw.org, drop it in the folder and run
 build.bat again.
 
 Part shapes: LDraw Parts Library, www.ldraw.org, licensed CC BY 4.0.
+
+BUILD PLATES (v2.0 - set up for Dave's Bambu P2S, one spool at a time)
+- Making a whole set: each colour folder has ready-packed build plates,
+  e.g. "Red - plate 1 of 2.3mf" - every red piece of the set laid out on a
+  256 x 256 plate. Open it in Bambu Studio, load the red spool, print.
+  Every shape is also saved on its own in "single pieces" for reprints.
+  String/chain segments stay off the plates (use real string).
+- Making parts: set "How many" (or type 3001 x10 in the make list) and you
+  get one 3MF with all the copies already laid out on the plate.
+- Untick "Several of a piece: lay them out on one build plate" to get plain
+  STLs like before.
