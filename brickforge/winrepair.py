@@ -56,39 +56,70 @@ def mesh_to_3mf(V, F):
     return buf.getvalue()
 
 
+def _matrix(tf):
+    """3MF transform "m00 m01 m02 m10 ... m32" -> 4x4 (row vectors)."""
+    M = np.eye(4)
+    if tf:
+        M[:, :3] = np.array([float(x) for x in tf.split()]).reshape(4, 3)
+    return M
+
+
 def mesh_from_3mf(data):
-    """All meshes in the package, joined (with each build item's transform applied)."""
+    """All meshes in the package, joined, with build-item and component transforms applied.
+    Windows' repair can hand back an object made of components (references to other
+    objects, possibly in other .model files) instead of one plain mesh - handled here."""
+    roots = []
     with zipfile.ZipFile(io.BytesIO(data)) as z:
-        name = next((n for n in z.namelist() if n.lower().endswith(".model")), None)
-        root = ET.fromstring(z.read(name))
-    for el in root.iter():                       # drop namespaces
-        if "}" in el.tag:
-            el.tag = el.tag.split("}", 1)[1]
-    objects = {}
-    for obj in root.iter("object"):
-        mesh = obj.find("mesh")
-        if mesh is None:
-            continue
-        V = np.array([[float(v.get("x")), float(v.get("y")), float(v.get("z"))]
-                      for v in mesh.find("vertices")], dtype=float).reshape(-1, 3)
-        F = np.array([[int(t.get("v1")), int(t.get("v2")), int(t.get("v3"))]
-                      for t in mesh.find("triangles")], dtype=np.int64).reshape(-1, 3)
-        objects[obj.get("id")] = (V, F)
-    build = root.find("build")
-    use = [(it.get("objectid"), it.get("transform")) for it in (build if build is not None else [])]
-    use = use or [(k, None) for k in objects]
+        names = [n for n in z.namelist() if n.lower().endswith(".model")]
+        for n in names:
+            r = ET.fromstring(z.read(n))
+            for el in r.iter():                  # drop namespaces
+                if "}" in el.tag:
+                    el.tag = el.tag.split("}", 1)[1]
+                for k in list(el.attrib):
+                    if "}" in k:
+                        el.attrib[k.split("}", 1)[1]] = el.attrib.pop(k)
+            roots.append(r)
+    if not roots:
+        return None
+    objects = {}                                  # id -> ("mesh", V, F) or ("comp", [(id, M)])
+    for r in roots:
+        for obj in r.iter("object"):
+            oid = obj.get("id")
+            mesh = obj.find("mesh")
+            if mesh is not None and mesh.find("vertices") is not None and mesh.find("triangles") is not None:
+                V = np.array([[float(v.get("x")), float(v.get("y")), float(v.get("z"))]
+                              for v in mesh.find("vertices")], dtype=float).reshape(-1, 3)
+                F = np.array([[int(t.get("v1")), int(t.get("v2")), int(t.get("v3"))]
+                              for t in mesh.find("triangles")], dtype=np.int64).reshape(-1, 3)
+                if oid not in objects or objects[oid][0] != "mesh":
+                    objects[oid] = ("mesh", V, F)
+                continue
+            comps = obj.find("components")
+            if comps is not None and oid not in objects:
+                objects[oid] = ("comp", [(c.get("objectid"), _matrix(c.get("transform"))) for c in comps])
+    build = next((r.find("build") for r in roots if r.find("build") is not None), None)
+    use = [(it.get("objectid"), _matrix(it.get("transform"))) for it in (build if build is not None else [])]
+    use = use or [(k, np.eye(4)) for k, v in objects.items() if v[0] == "mesh"]
     parts_V, parts_F, off = [], [], 0
-    for oid, tf in use:
-        if oid not in objects:
-            continue
-        V, F = objects[oid]
-        if tf:
-            M = np.array([float(x) for x in tf.split()]).reshape(4, 3)
-            V = V @ M[:3] + M[3]
-        parts_V.append(V)
-        parts_F.append(F + off)
-        off += len(V)
-    if not parts_V:
+
+    def add(oid, M, depth=0):
+        nonlocal off
+        o = objects.get(oid)
+        if o is None or depth > 8:
+            return
+        if o[0] == "mesh":
+            V = np.c_[o[1], np.ones(len(o[1]))] @ M
+            parts_V.append(V[:, :3])
+            parts_F.append(o[2] + off)
+            off += len(o[1])
+        else:
+            for cid, CM in o[1]:
+                add(cid, CM @ M, depth + 1)
+
+    for oid, M in use:
+        add(oid, M)
+    if not parts_V or not sum(len(f) for f in parts_F):
         return None
     return np.vstack(parts_V), np.vstack(parts_F)
 
@@ -136,7 +167,10 @@ def repair(V, F):
     try:
         # never let a stuck repair hang BrickForge - give up after a minute and a half
         data = asyncio.run(asyncio.wait_for(_repair_async(mesh_to_3mf(V, F)), timeout=REPAIR_TIMEOUT))
-        return mesh_from_3mf(data)
+        r = mesh_from_3mf(data)
+        if r is None:
+            _err = f"Windows sent back a file with no shape BrickForge could read ({len(data):,} bytes)"
+        return r
     except asyncio.TimeoutError:
         _err = "Windows took too long to repair it"
         return None
