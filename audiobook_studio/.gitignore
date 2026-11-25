@@ -1,0 +1,6 @@
+data/
+library/
+exports/
+voices/
+__pycache__/
+*.pyc

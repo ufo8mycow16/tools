@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f1a">
+<title>Audiobook Studio</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Literata:opsz,wght@7..72,400;7..72,500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#/">
+    <svg viewBox="0 0 40 40" class="moons" aria-hidden="true"><circle cx="13" cy="22" r="7"/><circle cx="25" cy="14" r="5"/><circle cx="29" cy="27" r="4"/></svg>
+    <span><b>Audiobook</b> Studio</span>
+  </a>
+  <nav class="tabs" id="nav">
+    <a href="#/" data-nav="library">Library</a>
+    <a href="#/voices" data-nav="voices">Voices</a>
+    <a href="#/words" data-nav="words">Pronunciation</a>
+    <a href="#/queue" data-nav="queue">Queue <span id="queueBadge" class="badge hidden">0</span></a>
+    <a href="#/settings" data-nav="settings">Settings</a>
+  </nav>
+</header>
+
+<main id="view" class="view"></main>
+
+<div id="mini" class="mini hidden">
+  <img id="miniCover" alt="">
+  <div class="mini-text"><b id="miniTitle"></b><span id="miniChapter"></span></div>
+  <button class="icon" id="miniPlay" aria-label="Play or pause"></button>
+  <a class="icon" id="miniOpen" aria-label="Open player">&#8599;</a>
+  <div class="mini-bar"><i id="miniBar"></i></div>
+</div>
+
+<div id="toast" class="toast"></div>
+<div id="modal" class="modal hidden"><div class="modal-card" id="modalCard"></div></div>
+
+<audio id="audio" preload="auto"></audio>
+<audio id="sample" preload="none"></audio>
+<script src="/app.js"></script>
+</body>
+</html>
