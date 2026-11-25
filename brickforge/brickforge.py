@@ -12,7 +12,7 @@ import ldraw_core as core
 import sets_core
 
 APP = "BrickForge"
-VERSION = "2.2"
+VERSION = "2.3"
 ALL = "All categories"
 
 

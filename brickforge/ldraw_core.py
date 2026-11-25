@@ -375,12 +375,12 @@ def clean_mesh(tris_mm, weld=1e-3):
 
 
 # Parts whose LDraw shape doesn't fit the real thing, replaced by hand-made meshes in fixed/.
-# 2x6x2 train windscreen: LDraw melts the glass into the frame, so the printed frame had no room
-# for real LEGO glass (Dave, Nov 2026). The fixed frame takes the real glass (13756); glass isn't printed.
-FIXED_PARTS = {n: "windscreen_2x6x2_frame" for n in
-               ("6567", "6567c01", "6567c02", "6567c03", "13760", "13760c01", "13760c02")}
-FIXED_NOTES = {"windscreen_2x6x2_frame": "frame made to take real LEGO glass (13756) - glass not printed"}
-PREVIEW_STANDIN = {"windscreen_2x6x2_frame": "13760"}   # light library version for the preview
+# 2x6x2 vertical windscreen frame 17454 (Dave's train, Nov 2026): LDraw draws its glass (17457)
+# touching the frame with no gap at all, so a printed frame was too tight for the real glass.
+# The fixed frame has 0.2 mm of room wherever the glass touches it. The glass isn't printed.
+FIXED_PARTS = {n: "windscreen_2x6x2_vertical_frame" for n in ("17454", "17454c01", "17454c02")}
+FIXED_NOTES = {"windscreen_2x6x2_vertical_frame": "frame with room for the real LEGO glass (17457) - glass not printed"}
+PREVIEW_STANDIN = {"windscreen_2x6x2_vertical_frame": "17454"}   # light library version for the preview
 
 
 def _fixed_path(name):
