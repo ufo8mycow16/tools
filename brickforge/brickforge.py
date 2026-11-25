@@ -12,7 +12,7 @@ import ldraw_core as core
 import sets_core
 
 APP = "BrickForge"
-VERSION = "2.0"
+VERSION = "2.1"
 ALL = "All categories"
 
 
@@ -843,7 +843,8 @@ class App:
 
     def _build_preview(self, req, num, desc, rgb=None, colour_name=""):
         try:
-            v, f, _, _ = core.part_to_mesh(self.lib, num)
+            fx = core.fixed_part(num)
+            v, f, _, _ = core.part_to_mesh(self.lib, core.PREVIEW_STANDIN.get(fx, num) if fx else num)
             self.mesh_cache[num] = (v, f)
             if len(self.mesh_cache) > 60:
                 self.mesh_cache.pop(next(iter(self.mesh_cache)))

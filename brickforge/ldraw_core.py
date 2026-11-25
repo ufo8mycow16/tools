@@ -374,7 +374,40 @@ def clean_mesh(tris_mm, weld=1e-3):
     return verts[used], remap[F], open_edges
 
 
-def part_to_mesh(lib, number, stud_adjust=0.0, tube_adjust=0.0):
+# Parts whose LDraw shape doesn't fit the real thing, replaced by hand-made meshes in fixed/.
+# 2x6x2 train windscreen: LDraw melts the glass into the frame, so the printed frame had no room
+# for real LEGO glass (Dave, Nov 2026). The fixed frame takes the real glass (13756); glass isn't printed.
+FIXED_PARTS = {n: "windscreen_2x6x2_frame" for n in
+               ("6567", "6567c01", "6567c02", "6567c03", "13760", "13760c01", "13760c02")}
+FIXED_NOTES = {"windscreen_2x6x2_frame": "frame made to take real LEGO glass (13756) - glass not printed"}
+PREVIEW_STANDIN = {"windscreen_2x6x2_frame": "13760"}   # light library version for the preview
+
+
+def _fixed_path(name):
+    import sys
+    here = os.path.dirname(os.path.abspath(__file__))
+    for base in (getattr(sys, "_MEIPASS", None), here):
+        if base:
+            p = os.path.join(base, "fixed", name + ".npz")
+            if os.path.exists(p):
+                return p
+    return None
+
+
+def fixed_part(number):
+    """Name of the hand-made replacement for this part, if there is one."""
+    n = number.lower()
+    if n.endswith(".dat"):
+        n = n[:-4]
+    name = FIXED_PARTS.get(n)
+    return name if name and _fixed_path(name) else None
+
+
+def part_to_mesh(lib, number, stud_adjust=0.0, tube_adjust=0.0, fixed=True):
+    fx = fixed_part(number) if fixed else None
+    if fx:
+        d = np.load(_fixed_path(fx))
+        return d["v"].astype(float), d["f"].astype(np.int64), 0, []
     fl = Flattener(lib, stud_adjust, tube_adjust)
     tris = fl.flatten(number + ".dat")
     if len(tris) == 0:
@@ -576,6 +609,9 @@ def generate(lib, number, out_dir, stud_adjust=0.0, tube_adjust=0.0, seal=True, 
     how = ""
     if seal:
         verts, faces, open_edges, how = make_printable(verts, faces, open_edges)
+    fx = fixed_part(resolved)
+    if fx:
+        how = FIXED_NOTES.get(fx, "hand-made fixed version")
     size = verts.max(axis=0) - verts.min(axis=0)
     os.makedirs(out_dir, exist_ok=True)
     path = save_piece(out_dir, safe_filename(f"{resolved} - {desc.lstrip('~=_|')}"),

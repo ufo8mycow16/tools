@@ -45,7 +45,7 @@ if defined CAT (
 
 echo  [3/3] Making BrickForge.exe (takes a minute or two)...
 %PY% -m PyInstaller --noconfirm --clean --onefile --windowed --name BrickForge ^
-    --add-data "ldraw_lib.zip;." --add-data "art\*.png;art" %SETSDATA% --hidden-import ldraw_seal --hidden-import winrepair --hidden-import sets_core --hidden-import PIL.ImageTk ^
+    --add-data "ldraw_lib.zip;." --add-data "art\*.png;art" --add-data "fixed\*.npz;fixed" %SETSDATA% --hidden-import ldraw_seal --hidden-import winrepair --hidden-import sets_core --hidden-import PIL.ImageTk ^
     --collect-submodules winrt --hidden-import scipy.spatial ^
     brickforge.py || goto :fail
 
