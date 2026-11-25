@@ -139,9 +139,14 @@ def auto_cast(book_id):
     vs = voices.scan()
     by_key = {v['key'].lower(): v['key'] for v in vs}
     by_name = {v['name'].lower(): v['key'] for v in vs}
+    # Old Shatner (kirk.mp3) narrates; Kirk's own lines get young Shatner when there's a young-kirk file.
+    young_kirk = by_key.get('young-kirk') or by_key.get('young_kirk') or by_key.get('kirk-young') or by_key.get('kirk_young')
     for c in db.q("SELECT * FROM characters WHERE book_id=? AND voice=''", (book_id,)):
         names = [c['name']] + db.jload(c['aliases'], [])
         hit = None
+        if c['name'] == 'Kirk' and young_kirk:
+            db.update('characters', c['id'], {'voice': young_kirk})
+            continue
         for n in names:
             k = n.lower().replace(' ', '_')
             hit = by_key.get(k) or by_name.get(n.lower()) or by_key.get(n.split()[-1].lower())
@@ -153,7 +158,9 @@ def auto_cast(book_id):
             db.update('characters', c['id'], {'voice': hit})
     book = db.one('SELECT narrator_voice FROM books WHERE id=?', (book_id,))
     if book and not book['narrator_voice']:
-        pick = by_key.get('narrator') or by_key.get('shatner') or by_key.get('kirk_narrator') or by_key.get('kirk')
+        # narrator.wav is the cold female narrator from Star Trek 25th Anniversary - only a last resort
+        pick = (by_key.get('shatner') or by_key.get('kirk_narrator') or by_key.get('kirk')
+                or by_key.get('narrator'))
         if pick:
             db.update('books', book_id, {'narrator_voice': pick})
 
