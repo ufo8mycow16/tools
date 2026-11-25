@@ -12,7 +12,7 @@ import ldraw_core as core
 import sets_core
 
 APP = "BrickForge"
-VERSION = "2.1"
+VERSION = "2.2"
 ALL = "All categories"
 
 
@@ -245,9 +245,11 @@ class App:
 
         root.title(f"{APP} {VERSION} - LEGO part to STL")
         # tall enough for the knights and the lists, but never taller than the screen
-        h = max(700, min(940, root.winfo_screenheight() - 90))
+        sh = root.winfo_screenheight()
+        self.small = sh < 900                      # laptop screens: smaller header art, tighter lists
+        h = max(560, min(940, sh - 80))
         root.geometry(f"1180x{h}")
-        root.minsize(980, 680)
+        root.minsize(900, min(560, h))
         self._build()
         self.log("Loading parts library...")
         threading.Thread(target=self._load_lib, daemon=True).start()
@@ -265,6 +267,10 @@ class App:
                 self.art[n] = tk.PhotoImage(file=resource(os.path.join("art", n + ".png")))
             except Exception:
                 pass                                   # no pictures - the app works without them
+        if getattr(self, "small", False):              # half-size header art on short screens
+            for n in ("banner", "knight_guard"):
+                if n in self.art:
+                    self.art[n] = self.art[n].subsample(2, 2)
 
     def _art_canvas(self, parent, name):
         img = self.art.get(name)
@@ -300,7 +306,7 @@ class App:
             words = ttk.Frame(head)
             words.pack(side="left", fill="x", expand=True, padx=16)
             ttk.Label(words, text="Any LEGO part or set, ready to print",
-                      font=("Segoe UI", 15, "bold")).pack(anchor="w", pady=(18, 2))
+                      font=("Segoe UI", 15, "bold")).pack(anchor="w", pady=(4 if getattr(self, "small", False) else 18, 2))
             ttk.Label(words, text="Pick a part or a whole set, press Generate - the knights do the rest.",
                       foreground="#555", font=("Segoe UI", 10)).pack(anchor="w")
         main = ttk.Frame(self.root, padding=8)
@@ -366,8 +372,8 @@ class App:
         right = ttk.Frame(main)
         right.grid(row=0, column=1, sticky="nsew")
         right.columnconfigure(0, weight=1)
-        right.rowconfigure(0, weight=3)
-        right.rowconfigure(1, weight=2)
+        right.rowconfigure(0, weight=1, minsize=140)   # the preview gives way on short screens...
+        right.rowconfigure(1, weight=0)                # ...so the make list, knight and Generate always show
 
         pv = ttk.LabelFrame(right, text="Preview")
         pv.grid(row=0, column=0, sticky="nsew")
@@ -383,8 +389,8 @@ class App:
         mk = ttk.LabelFrame(right, text="Make list (you can also type part numbers here)")
         mk.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
         mk.columnconfigure(0, weight=1)
-        mk.rowconfigure(0, weight=1, minsize=90)        # the make list box never squashes away
-        self.parts_txt = tk.Text(mk, height=6, width=30, font=("Consolas", 11), undo=True)
+        mk.rowconfigure(0, weight=1, minsize=80)        # the make list box never squashes away
+        self.parts_txt = tk.Text(mk, height=4, width=30, font=("Consolas", 11), undo=True)
         self.parts_txt.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=6, pady=6)
         ttk.Button(mk, text="Clear list", command=lambda: self.parts_txt.delete("1.0", "end")).grid(
             row=1, column=0, sticky="w", padx=6, pady=(0, 6))
@@ -449,8 +455,9 @@ class App:
     # ---------- sets tab ----------
     def _build_sets_tab(self, tab):
         tab.columnconfigure(1, weight=1)
-        tab.rowconfigure(3, weight=1, minsize=140)      # sets list
-        tab.rowconfigure(5, weight=2, minsize=150)      # what's in the box
+        small = getattr(self, "small", False)
+        tab.rowconfigure(3, weight=1, minsize=90 if small else 140)      # sets list
+        tab.rowconfigure(5, weight=2, minsize=100 if small else 150)     # what's in the box
         ttk.Label(tab, text="Theme:").grid(row=0, column=0, sticky="w", padx=6, pady=(6, 3))
         self.theme_var = tk.StringVar(value="All themes")
         self.theme_box = ttk.Combobox(tab, textvariable=self.theme_var, state="readonly", height=30)
