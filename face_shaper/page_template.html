@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Face Shaper - Chekov</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE: a make-up and prosthetics bench - calm, practical, the face is the work.
+   IDEA: a casting studio's mirror: the head big under good light, the controls a tidy row of dials beside it.
+   PICTURE: the live 3D head over Glen's lined-up photo, a fade between them.
+   COLOUR and TYPE: TOS command gold accent on charcoal; Archivo.
+   LAYOUT: viewport left (most of the screen), slider panel right; stacked on phones. */
+:root{color-scheme:light dark;--bg:light-dark(#f3f1ec,#141518);--panel:light-dark(#ffffff,#1d1f24);--ink:light-dark(#1b1c1f,#ecebe7);--mute:light-dark(#6b6c70,#9a9ba1);--line:light-dark(#e2dfd8,#2c2f36);--gold:#d7a928;--goldink:light-dark(#8a6a0c,#e8c04f)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Archivo,system-ui,sans-serif;overflow:hidden}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 380px;height:100vh}
+.stage{position:relative;background:#18191c}
+#view{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.hud{position:absolute;left:12px;right:12px;bottom:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:rgba(20,21,24,.78);color:#eee;border-radius:10px;padding:8px 10px;backdrop-filter:blur(6px)}
+.hud label{display:flex;align-items:center;gap:8px;font-size:14px}
+.hud input[type=range]{width:150px}
+.title{position:absolute;left:14px;top:12px;color:#eee;font-weight:800;font-size:22px;letter-spacing:.01em;text-shadow:0 1px 3px #000}
+.title small{display:block;font-weight:400;font-size:13px;color:#bbb}
+button{font:inherit;font-size:14px;min-height:36px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.hud button{background:#2a2c32;border-color:#3a3d45;color:#eee}
+button:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+button.on{background:var(--gold);border-color:var(--gold);color:#1b1c1f}
+button.primary{background:var(--gold);border-color:var(--gold);color:#1b1c1f;font-weight:600}
+.side{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;height:100vh}
+.top{padding:12px 14px;border-bottom:1px solid var(--line);display:grid;gap:8px}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.top input[type=search]{width:100%;font:inherit;font-size:16px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+#status{font-size:13px;color:var(--mute);min-height:18px}
+.list{overflow-y:auto;padding:4px 14px 24px;flex:1}
+details{border-bottom:1px solid var(--line)}
+summary{cursor:pointer;padding:12px 0;font-weight:600;display:flex;justify-content:space-between;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary .n{font-weight:400;color:var(--goldink);font-size:13px}
+.s{display:grid;grid-template-columns:minmax(0,1fr) 48px 32px;gap:2px 8px;align-items:center;padding:6px 0}
+.s .lab{font-size:14px}
+.s.changed .lab{color:var(--goldink);font-weight:600}
+.s input[type=range]{grid-column:1/3;width:100%;accent-color:var(--gold);height:28px}
+.s .val{text-align:right;font-variant-numeric:tabular-nums;font-size:13px;color:var(--mute)}
+.s button{grid-row:1/3;grid-column:3;min-height:32px;padding:0;width:32px;font-size:15px}
+.note{font-size:12.5px;color:var(--mute);padding:10px 0 0}
+#loading{position:absolute;inset:0;display:grid;place-items:center;color:#ccc;font-size:15px}
+@media(max-width:820px){body{overflow:auto}.app{grid-template-columns:1fr;height:auto}.stage{height:62vh}.side{height:auto;border-left:0}.list{overflow:visible}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage">
+    <canvas id="view"></canvas>
+    <div id="loading">Loading Chekov's head…</div>
+    <div class="title">Face Shaper<small>Ensign Chekov · photo lined up by the eye corners</small></div>
+    <div class="hud">
+      <label>Photo <input id="fade" type="range" min="0" max="100" value="50"> <span id="fadev">50%</span></label>
+      <button id="vModel">Model</button><button id="vHalf">50/50</button><button id="vPhoto">Photo</button>
+      <button id="front">Front view</button>
+      <button id="hairBtn">Hair: off</button>
+      <span style="font-size:12.5px;color:#aaa">Drag to turn · scroll to zoom · Space flips model/photo</span>
+    </div>
+  </div>
+  <aside class="side">
+    <div class="top">
+      <div class="row">
+        <button class="primary" id="send">Send to Claude</button>
+        <button id="undo" title="Ctrl+Z">Undo</button><button id="redo" title="Ctrl+Shift+Z">Redo</button>
+        <button id="resetAll">Reset all</button>
+      </div>
+      <div class="row"><input id="q" type="search" placeholder="Find a slider (jaw, brow, lip…)"><button id="onlyChanged">Changed only</button></div>
+      <div id="status">Nothing changed yet.</div>
+    </div>
+    <div class="list" id="list"></div>
+  </aside>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+{
+const KEY='chekov';
+const $=id=>document.getElementById(id);
+const status=t=>{$('status').textContent=t};
+let meta, base, cur, morphs=[], vals={}, orig, triOrig, geo, hairMesh, photoMesh, camera, controls, renderer, scene, nTop;
+const hist=[], fut=[];
+const b64=t=>{const s=atob(t.trim()),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u.buffer};
+const fmt=v=>(v>0?'+':'')+v.toFixed(2);
+
+async function load(){
+  const [m,hb,mb]=await Promise.all([fetch('meta.json').then(r=>r.json()),fetch('head.txt').then(r=>r.text()).then(b64),fetch('morphs.txt').then(r=>r.text()).then(b64)]);
+  meta=m;
+  const arr=(k,T)=>{const h=meta.head[k];return new T(hb,h.off,h.n)};
+  base=arr('pos',Float32Array); nTop=base.length/3; cur=new Float32Array(base);
+  const uv=arr('uv',Float32Array), index=arr('index',Uint32Array); orig=arr('orig',Uint16Array);
+  triOrig=new Uint32Array(index.length); for(let i=0;i<index.length;i++)triOrig[i]=orig[index[i]];
+  for(const s of meta.sliders){
+    const idx=new Uint16Array(mb,s.off,s.n), q=new Int16Array(mb,s.off+s.n*2,s.n*3);
+    const d=new Float32Array(s.n*3); for(let i=0;i<d.length;i++)d[i]=q[i]*s.scale;
+    morphs.push({...s,idx,d}); vals[s.id]=0;
+  }
+  buildScene(uv,index,arr('hair_pos',Float32Array),arr('hair_uv',Float32Array));
+  buildList(); restore(); $('loading').remove();
+}
+
+function buildScene(uv,index,hp,huv){
+  const cv=$('view');
+  renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true}); renderer.setPixelRatio(Math.min(2,devicePixelRatio));
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  scene=new THREE.Scene(); scene.background=new THREE.Color(0x18191c);
+  const c=meta.centre;
+  camera=new THREE.OrthographicCamera(-1,1,1,-1,1,400); camera.position.set(c[0],c[1],c[2]+120);
+  controls=new THREE.OrbitControls(camera,cv); controls.target.set(c[0],c[1],c[2]); controls.enablePan=false; controls.minZoom=.6; controls.maxZoom=6; controls.update();
+  scene.add(new THREE.HemisphereLight(0xffffff,0x504840,.75));
+  const key=new THREE.DirectionalLight(0xffffff,.75); key.position.set(-30,40,120); scene.add(key);
+  const fill=new THREE.DirectionalLight(0xffffff,.25); fill.position.set(80,10,60); scene.add(fill);
+  const tl=new THREE.TextureLoader(), tex=f=>{const t=tl.load(f,()=>draw());t.encoding=THREE.sRGBEncoding;t.flipY=false;t.anisotropy=4;return t};
+  // three's flipY=false + our uv v: picture rows are top-down, uv v is up -> flip v here
+  const uv2=new Float32Array(uv.length); for(let i=0;i<uv.length;i+=2){uv2[i]=uv[i];uv2[i+1]=1-uv[i+1]}
+  geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(orig.length*3),3));
+  geo.setAttribute('normal',new THREE.BufferAttribute(new Float32Array(orig.length*3),3));
+  geo.setAttribute('uv',new THREE.BufferAttribute(uv2,2)); geo.setIndex(new THREE.BufferAttribute(index,1));
+  const mats=meta.groups.map(g=>new THREE.MeshStandardMaterial({map:tex(g.tex),roughness:g.name==='eyes'?.25:.72,metalness:0}));
+  meta.groups.forEach((g,i)=>geo.addGroup(g.start,g.count,i));
+  scene.add(new THREE.Mesh(geo,mats));
+  const hu=new Float32Array(huv.length); for(let i=0;i<huv.length;i+=2){hu[i]=huv[i];hu[i+1]=1-huv[i+1]}
+  const hgeo=new THREE.BufferGeometry(); hgeo.setAttribute('position',new THREE.BufferAttribute(hp,3)); hgeo.setAttribute('uv',new THREE.BufferAttribute(hu,2)); hgeo.computeVertexNormals();
+  hairMesh=new THREE.Mesh(hgeo,new THREE.MeshStandardMaterial({map:tex('hair.png'),alphaTest:.5,side:THREE.DoubleSide,roughness:.8}));
+  hairMesh.visible=false; scene.add(hairMesh);
+  const p=meta.photo, pw=p.x1-p.x0, ph=p.y1-p.y0;
+  const pt=tl.load('photo.jpg',()=>draw()); pt.encoding=THREE.sRGBEncoding;
+  photoMesh=new THREE.Mesh(new THREE.PlaneGeometry(pw,ph),new THREE.MeshBasicMaterial({map:pt,transparent:true,opacity:.5,depthTest:false,depthWrite:false}));
+  photoMesh.position.set((p.x0+p.x1)/2,(p.y0+p.y1)/2,c[2]+40); photoMesh.renderOrder=10; scene.add(photoMesh);
+  controls.addEventListener('change',draw);
+  const ro=new ResizeObserver(resize); ro.observe(cv); resize(); apply();
+}
+function resize(){
+  const cv=$('view'), w=cv.clientWidth, h=cv.clientHeight; if(!w||!h)return;
+  renderer.setSize(w,h,false); const p=meta.photo, half=(p.y1-p.y0)/2*1.02, a=w/h;
+  camera.left=-half*a; camera.right=half*a; camera.top=half; camera.bottom=-half; camera.updateProjectionMatrix(); draw();
+}
+function frontish(){const v=camera.position.clone().sub(controls.target).normalize();return v.z>.995}
+function draw(){
+  if(!renderer)return;
+  const op=+$('fade').value/100; photoMesh.visible=op>0&&frontish(); photoMesh.material.opacity=op;
+  renderer.render(scene,camera);
+}
+function apply(){
+  cur.set(base);
+  for(const m of morphs){const v=vals[m.id]; if(!v)continue; const {idx,d}=m; for(let i=0;i<idx.length;i++){const o=idx[i]*3,k=i*3;cur[o]+=v*d[k];cur[o+1]+=v*d[k+1];cur[o+2]+=v*d[k+2]}}
+  const nrm=new Float32Array(cur.length);
+  for(let t=0;t<triOrig.length;t+=3){
+    const a=triOrig[t]*3,b=triOrig[t+1]*3,c=triOrig[t+2]*3;
+    const ux=cur[b]-cur[a],uy=cur[b+1]-cur[a+1],uz=cur[b+2]-cur[a+2],vx=cur[c]-cur[a],vy=cur[c+1]-cur[a+1],vz=cur[c+2]-cur[a+2];
+    const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+    for(const o of [a,b,c]){nrm[o]+=nx;nrm[o+1]+=ny;nrm[o+2]+=nz}
+  }
+  const P=geo.attributes.position.array,N=geo.attributes.normal.array;
+  for(let i=0;i<orig.length;i++){const o=orig[i]*3,k=i*3;P[k]=cur[o];P[k+1]=cur[o+1];P[k+2]=cur[o+2];
+    const l=Math.hypot(nrm[o],nrm[o+1],nrm[o+2])||1;N[k]=nrm[o]/l;N[k+1]=nrm[o+1]/l;N[k+2]=nrm[o+2]/l}
+  geo.attributes.position.needsUpdate=true; geo.attributes.normal.needsUpdate=true; geo.computeBoundingSphere(); draw();
+}
+
+function buildList(){
+  const groups=[...new Set(meta.sliders.map(s=>s.group))];
+  $('list').innerHTML=groups.map(g=>`<details open data-g="${g}"><summary>${g}<span class="n"></span></summary>${
+    meta.sliders.filter(s=>s.group===g).map(s=>`<div class="s" data-id="${s.id}"><span class="lab">${s.label}</span><span class="val">0.00</span>
+      <button title="Reset this slider" aria-label="Reset ${s.label}">↺</button>
+      <input type="range" min="${s.min}" max="${s.max}" step="0.01" value="0" aria-label="${s.label}"></div>`).join('')}</details>`).join('')+
+    `<p class="note">The hair doesn't follow the sliders here, so it's off by default. Brows, skin and makeup are painted later; these sliders change the shape only.</p>`;
+  for(const row of document.querySelectorAll('.s')){
+    const id=row.dataset.id, r=row.querySelector('input');
+    r.addEventListener('pointerdown',()=>snap());
+    r.addEventListener('keydown',()=>snap());
+    r.addEventListener('input',()=>{vals[id]=+r.value; showRow(row); apply(); dirty()});
+    row.querySelector('button').addEventListener('click',()=>{if(!vals[id])return;snap();vals[id]=0;r.value=0;showRow(row);apply();dirty()});
+    r.addEventListener('dblclick',()=>row.querySelector('button').click());
+  }
+}
+function showRow(row){const v=vals[row.dataset.id];row.querySelector('.val').textContent=fmt(v);row.classList.toggle('changed',Math.abs(v)>.001)}
+function refreshAll(){for(const row of document.querySelectorAll('.s')){row.querySelector('input').value=vals[row.dataset.id];showRow(row)};counts();filter();apply()}
+function counts(){for(const d of document.querySelectorAll('details')){const n=d.querySelectorAll('.s.changed').length;d.querySelector('.n').textContent=n?n+' changed':''}}
+let lastSnap=0;
+function snap(){const now=Date.now();if(now-lastSnap<400)return;lastSnap=now;hist.push(JSON.stringify(vals));if(hist.length>200)hist.shift();fut.length=0}
+function undo(){if(!hist.length)return;fut.push(JSON.stringify(vals));vals=JSON.parse(hist.pop());refreshAll();dirty()}
+function redo(){if(!fut.length)return;hist.push(JSON.stringify(vals));vals=JSON.parse(fut.pop());refreshAll();dirty()}
+let saveTimer;
+function dirty(){counts();const n=Object.values(vals).filter(v=>Math.abs(v)>.001).length;
+  status(n?`${n} slider${n>1?'s':''} changed - not sent yet.`:'Nothing changed yet.');
+  clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem('faceshaper-'+KEY,JSON.stringify(vals))}catch(e){}},300);
+  if(onlyChanged)filter();
+}
+let onlyChanged=false;
+function filter(){const q=$('q').value.trim().toLowerCase();
+  for(const row of document.querySelectorAll('.s')){const s=meta.sliders.find(x=>x.id===row.dataset.id);
+    const hit=(!q||s.label.toLowerCase().includes(q)||s.group.toLowerCase().includes(q))&&(!onlyChanged||Math.abs(vals[s.id])>.001);row.style.display=hit?'':'none'}
+  for(const d of document.querySelectorAll('details')){const any=[...d.querySelectorAll('.s')].some(r=>r.style.display!=='none');d.style.display=any?'':'none';if(q||onlyChanged)d.open=true}
+}
+async function restore(){
+  try{const s=JSON.parse(localStorage.getItem('faceshaper-'+KEY)||'null');if(s){for(const k in s)if(k in vals)vals[k]=s[k];refreshAll();dirty()}}catch(e){}
+  const db=await claude.use('db').catch(()=>null); if(!db)return;
+  try{const snapd=await db.doc('faces/'+KEY).get(); if(snapd.exists){const d=snapd.data();
+    const local=Object.values(vals).some(v=>Math.abs(v)>.001);
+    if(!local&&d.values){for(const k in d.values)if(k in vals)vals[k]=d.values[k];refreshAll()}
+    status((local?'Your unsent changes are loaded. ':'')+'Last sent to Claude: '+new Date(d.sent).toLocaleString())}}catch(e){}
+}
+async function send(){
+  const db=await claude.use('db').catch(()=>null);
+  if(!db){status("Can't reach the save store from here - open the page from claude.ai and try again.");return}
+  const out={};for(const k in vals)if(Math.abs(vals[k])>.001)out[k]=Math.round(vals[k]*1000)/1000;
+  $('send').disabled=true;status('Sending…');
+  try{await db.doc('faces/'+KEY).set({character:KEY,values:out,sent:new Date().toISOString()});
+    status(`Sent ${Object.keys(out).length} sliders to Claude - tell Claude in the chat and it'll build him.`)}
+  catch(e){status('Sending failed ('+(e&&e.code||'error')+'). Try again in a moment.')}
+  $('send').disabled=false;
+}
+$('send').onclick=send; $('undo').onclick=undo; $('redo').onclick=redo;
+$('resetAll').onclick=()=>{snap();for(const k in vals)vals[k]=0;refreshAll();dirty()};
+$('q').addEventListener('input',filter);
+$('onlyChanged').onclick=e=>{onlyChanged=!onlyChanged;e.currentTarget.classList.toggle('on',onlyChanged);filter()};
+const setFade=v=>{$('fade').value=v;$('fadev').textContent=v+'%';draw()};
+$('fade').addEventListener('input',()=>setFade(+$('fade').value));
+$('vModel').onclick=()=>setFade(0); $('vHalf').onclick=()=>setFade(50); $('vPhoto').onclick=()=>setFade(100);
+$('front').onclick=()=>{const c=meta.centre;camera.position.set(c[0],c[1],c[2]+120);camera.zoom=1;camera.updateProjectionMatrix();controls.target.set(c[0],c[1],c[2]);controls.update();draw()};
+$('hairBtn').onclick=e=>{hairMesh.visible=!hairMesh.visible;e.currentTarget.textContent='Hair: '+(hairMesh.visible?'on':'off');draw()};
+let flipBack=null;
+addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'&&e.target.type==='search')return;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo()}
+  if(e.code==='Space'&&e.target.type!=='range'){e.preventDefault();const v=+$('fade').value;setFade(v>=50?0:100)}
+});
+load().catch(e=>{$('loading').textContent="Couldn't load the head: "+e.message});
+}
+</script>
+</body>
+</html>
