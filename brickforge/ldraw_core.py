@@ -403,6 +403,52 @@ def fixed_part(number):
     return name if name and _fixed_path(name) else None
 
 
+UNDERSIDE_CLEARANCE = 0.25   # mm of room above a stud tip when the piece below is pushed home
+
+
+def deepen_underside(verts, faces):
+    """LDraw draws a plate's underside only 1.6 mm deep - exactly as deep as its studs are tall - so
+    with real-height studs (1.7 mm) and a printer's slightly fat top surfaces, stacked plates and tiles
+    sat on their stud tips and left a gap (Dave, Nov 2026). Real LEGO plates are hollowed deeper. This
+    raises any underside 'roof' that sits less than a stud height + clearance above the bottom."""
+    v = verts.copy()
+    zmin = v[:, 2].min()
+    zmax = v[:, 2].max()
+    target = zmin + STUD_HEIGHT + UNDERSIDE_CLEARANCE
+    tri = v[faces]
+    zs = tri[:, :, 2]
+    flat = (zs.max(1) - zs.min(1)) < 1e-4
+    zf = np.round(zs[:, 0], 4)
+    try:
+        from ldraw_seal import Occupancy
+        occ = Occupancy(verts, faces)
+    except Exception:
+        return v
+    w = np.array([[1/3, 1/3, 1/3], [.6, .2, .2], [.2, .6, .2], [.2, .2, .6], [.45, .45, .1], [.1, .45, .45], [.45, .1, .45]])
+    vmaxz = np.full(len(v), -np.inf)
+    np.maximum.at(vmaxz, faces.ravel(), np.repeat(zs.max(1), 3))
+    for zr in np.unique(zf[flat]):
+        if not (zmin + 1.2 < zr < target - 1e-3):
+            continue
+        group = np.nonzero(flat & (zf == zr))[0]
+        pts = np.einsum('kj,fjc->fkc', w, tri[group]).reshape(-1, 3)
+        below = occ.inside(pts - [0, 0, 0.05]).reshape(len(group), -1)
+        above = occ.inside(pts + [0, 0, 0.05]).reshape(len(group), -1)
+        roof = (above.mean(1) >= 0.5) & ((~below).mean(1) >= 0.3)
+        if not roof.any():
+            continue
+        # the top must stay at least 0.8 mm thick over the new roof
+        if zmax - target < 0.8 + STUD_HEIGHT * (zmax - zmin > 3.2 + STUD_HEIGHT - 0.3 and False):
+            continue
+        roof_area = 0.0
+        # move every corner at this height that has nothing above it (roof, tube tops, inner walls)
+        at = np.isclose(v[:, 2], zr, atol=1e-4) & (vmaxz <= zr + 1e-4)
+        if at.sum() == 0:
+            continue
+        v[at, 2] = target
+    return v
+
+
 def part_to_mesh(lib, number, stud_adjust=0.0, tube_adjust=0.0, fixed=True):
     fx = fixed_part(number) if fixed else None
     if fx:
@@ -419,6 +465,7 @@ def part_to_mesh(lib, number, stud_adjust=0.0, tube_adjust=0.0, fixed=True):
     t[..., 2] = -tris[..., 1]
     t *= LDU
     verts, faces, open_edges = clean_mesh(t)
+    verts = deepen_underside(verts, faces)
     # sit it on the bed, centred
     mn, mx = verts.min(axis=0), verts.max(axis=0)
     verts = verts - [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, mn[2]]
