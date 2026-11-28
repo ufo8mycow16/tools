@@ -23,3 +23,11 @@ g8_head_swap.py, make_jcm_data.py, bake_skin_ao.py) and the slider basis is buil
 in vulcan-fury's assets/models/characters/_source/daz_packs/ - clone vulcan-fury alongside to use it.
 kmake_dsf.py + kc.py here are Chekov's copies (paths at their tops point at the vulcan-fury clone and the character).
 Works for any Daz Genesis 8 Male in any of Glen's games (Vulcan Fury, TWOK, Yesteryear...).
+
+## Kirk (29 Nov 2026)
+Kirk's page: https://claude.ai/artifact/KBkxcmi7vpLFX2jSSXBJGL (slug 93450633-4b8b-4855-9d37-53c4cd78cf2d), started from
+his CURRENT in-game head (pass 4, miniature fit, kirk_face_clean picture) over Glen's yellow-tunic studio portrait.
+Read what he sends: db_get that slug, path faces/kirk. Hair left off (his Trevor hair is a separate library piece).
+`reuse_sliders_export.py` = shortcut when no rar tools are around: lifts the 64 sliders out of Chekov's published page
+(morphs.txt + meta.json, read_file) back onto full G8M vertices and re-exports them for another G8M head. Kirk's head
+set (3331 verts) sits wholly inside Chekov's (3370), so nothing is lost. Photo marks: kirk_photo_marks.json.
